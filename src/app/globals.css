@@ -1,0 +1,90 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Mozilla+Headline:wght@600;700&family=Noto+Sans+Arabic:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #fafafa;
+  --surface: #ffffff;
+  --foreground: #18181b;
+  --muted: #64748b;
+  --line: #e5e7eb;
+  --accent: #fa2a55;
+  --accent-strong: #e31845;
+  --radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Inter, "Noto Sans Arabic", "Segoe UI", Arial, sans-serif;
+  letter-spacing: 0;
+}
+
+body::selection {
+  color: #18181b;
+  background: rgba(250, 42, 85, 0.18);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.manuscript-grid {
+  background-image: none;
+}
+
+.soft-underline {
+  border-bottom: 2px solid var(--accent);
+}
+
+.arabic-text {
+  direction: rtl;
+  text-align: right;
+  font-family: inherit;
+}
+
+.sajil-wordmark {
+  font-family: "Mozilla Headline", Inter, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.paper-texture {
+  background: var(--surface);
+}
+
+.cloud-texture {
+  background: var(--surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

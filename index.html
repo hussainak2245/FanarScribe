@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SAJIL | Clinical Intelligence</title>
+    <meta
+      name="description"
+      content="SAJIL is Arabic-first clinical intelligence for safer, faster outpatient documentation in Qatar."
+    >
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="SAJIL home">
+        <span>SAJIL</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#problem">Problem</a>
+        <a href="#market">Market</a>
+        <a href="#solution">Solution</a>
+        <a href="#stages">Stages</a>
+        <a class="nav-pill" href="narrative.html">Narrative</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero tech-hero">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">Arabic-first clinical intelligence</p>
+          <h1>SAJIL</h1>
+          <p class="tagline">Clinical intelligence that listens, writes, and knows when to ask.</p>
+          <p class="hero-text">
+            A clinician-in-the-loop AI scribe for Qatar's outpatient clinics, built for Arabic,
+            Gulf dialects, mixed medical language, uncertainty, and trusted retrieval.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#solution">Explore the system</a>
+            <a class="button secondary" href="narrative.html">Read the narrative</a>
+          </div>
+        </div>
+
+        <div class="clinical-console reveal" aria-label="Animated SAJIL workflow preview">
+          <div class="console-top">
+            <span></span>
+            <span></span>
+            <span></span>
+            <strong>live consultation</strong>
+          </div>
+          <canvas id="signalCanvas" width="720" height="460" aria-hidden="true"></canvas>
+          <div class="console-readout">
+            <div>
+              <small>Arabic speech</small>
+              <strong>Gulf dialect + EN terms</strong>
+            </div>
+            <div>
+              <small>Uncertainty</small>
+              <strong class="accent-text">3 checkpoints</strong>
+            </div>
+            <div>
+              <small>Grounding</small>
+              <strong>RAG active</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="metrics-band reveal" aria-label="Qatar market signals">
+        <div>
+          <span class="metric-value">31</span>
+          <span class="metric-label">PHCC health centers</span>
+        </div>
+        <div>
+          <span class="metric-value">1.8M+</span>
+          <span class="metric-label">active registered patients</span>
+        </div>
+        <div>
+          <span class="metric-value">5K+</span>
+          <span class="metric-label">clinicians in PHCC surface</span>
+        </div>
+        <div>
+          <span class="metric-value">Arabic-first</span>
+          <span class="metric-label">Fanar-aligned product direction</span>
+        </div>
+      </section>
+
+      <section class="section split" id="problem">
+        <div class="section-kicker reveal">01 / Problem</div>
+        <div class="section-body reveal">
+          <h2>Documentation is stealing time from care.</h2>
+          <p>
+            Outpatient clinicians document after every visit while working through high patient flow,
+            limited time, Arabic dialects, English medical terms, and informal symptom descriptions.
+          </p>
+          <div class="logic-grid">
+            <article>
+              <span>Burden</span>
+              <p>Clinical notes, summaries, forms, and instructions stretch the consultation beyond the room.</p>
+            </article>
+            <article>
+              <span>Language</span>
+              <p>Patients move between Arabic dialects, accents, and English terminology in one visit.</p>
+            </article>
+            <article>
+              <span>Risk</span>
+              <p>A polished AI note can hide uncertainty unless the clinician is asked to confirm.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section market-section" id="market">
+        <div class="section-kicker reveal">02 / Market</div>
+        <div class="market-layout">
+          <div class="section-body reveal">
+            <h2>Qatar is not a blank market. It is a concentrated launch point.</h2>
+            <p>
+              The opportunity is not to prove that clinical AI can exist. The opportunity is to
+              turn existing momentum into a product that fits local outpatient care.
+            </p>
+          </div>
+          <div class="market-proof reveal" aria-label="Market thesis">
+            <article>
+              <span>Global pull</span>
+              <h3>AI scribes are already a category.</h3>
+              <p>DAX and Scribeberry show clear demand for ambient notes, summaries, and physician-facing documentation UX.</p>
+            </article>
+            <article>
+              <span>Regional momentum</span>
+              <h3>Health AI is moving from idea to infrastructure.</h3>
+              <p>Avey-style medical APIs and Arabic health-AI startups show that the region is ready for specialized clinical tools.</p>
+            </article>
+            <article>
+              <span>Qatar fit</span>
+              <h3>Primary care is dense, multilingual, and workflow-heavy.</h3>
+              <p>PHCC gives the use case a focused surface: busy clinics, many clinicians, and patients moving across languages.</p>
+            </article>
+          </div>
+          <div class="market-thesis reveal">
+            <p>SAJIL's wedge</p>
+            <h3>
+              A clinician-facing layer that connects Fanar, Arabic speech understanding, medical retrieval,
+              and outpatient documentation into one usable workflow.
+            </h3>
+            <div class="market-links" aria-label="Market signals">
+              <a href="https://trydax.com/" target="_blank" rel="noreferrer">DAX</a>
+              <a href="https://scribeberry.com/" target="_blank" rel="noreferrer">Scribeberry</a>
+              <a href="https://avey.ai/" target="_blank" rel="noreferrer">Avey</a>
+              <a href="https://www.phcc.gov.qa/" target="_blank" rel="noreferrer">PHCC</a>
+              <a href="https://arxiv.org/abs/2106.13000" target="_blank" rel="noreferrer">QCRI QASR</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section split dark-panel" id="landscape">
+        <div class="section-kicker reveal">03 / Landscape</div>
+        <div class="section-body reveal">
+          <h2>Transcription is solved enough. Clinical reliability is not.</h2>
+          <p>
+            Current scribes can transcribe, summarize, and format. The harder product problem is
+            uncertainty, hallucination control, consent, privacy, dialect handling, and physician review.
+          </p>
+          <div class="comparison">
+            <div>
+              <h3>English-first scribes</h3>
+              <p>Strong documentation UX, ambient notes, and structured summaries.</p>
+            </div>
+            <div>
+              <h3>Regional AI pieces</h3>
+              <p>Avey-style health APIs, QCRI Arabic speech research, and Fanar's Arabic-first direction.</p>
+            </div>
+            <div>
+              <h3>SAJIL gap</h3>
+              <p>One clinician-facing workflow for Arabic consultation intelligence in Qatar.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section solution-section" id="solution">
+        <div class="section-kicker reveal">04 / Solution</div>
+        <div class="section-body reveal">
+          <h2>A clinical co-pilot that keeps the doctor in control.</h2>
+          <p>
+            SAJIL captures consultation input, generates structured notes, flags unclear details,
+            retrieves trusted context, and asks the clinician to confirm before finalizing.
+          </p>
+        </div>
+
+        <div class="workflow reveal" aria-label="SAJIL workflow">
+          <div class="workflow-step active">
+            <span>01</span>
+            <strong>Listen</strong>
+            <p>Arabic, Gulf dialect, and mixed medical speech.</p>
+          </div>
+          <div class="workflow-step">
+            <span>02</span>
+            <strong>Structure</strong>
+            <p>History, symptoms, assessment, plan, and instructions.</p>
+          </div>
+          <div class="workflow-step">
+            <span>03</span>
+            <strong>Ground</strong>
+            <p>RAG over approved guidelines and client documents.</p>
+          </div>
+          <div class="workflow-step">
+            <span>04</span>
+            <strong>Ask</strong>
+            <p>Uncertainty checkpoints before the final note.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section stage-section" id="stages">
+        <div class="section-kicker reveal">05 / Stages</div>
+        <div class="stage-shell reveal">
+          <div class="stage-tabs" role="tablist" aria-label="Product stages">
+            <button class="stage-tab active" type="button" data-stage="0" role="tab" aria-selected="true">
+              Hackathon MVP
+            </button>
+            <button class="stage-tab" type="button" data-stage="1" role="tab" aria-selected="false">
+              Clinical Workflow
+            </button>
+            <button class="stage-tab" type="button" data-stage="2" role="tab" aria-selected="false">
+              Local Intelligence
+            </button>
+          </div>
+          <div class="stage-content" aria-live="polite">
+            <p class="stage-label">Stage 1</p>
+            <h2>Prototype the core loop.</h2>
+            <p>
+              Consultation input, Arabic/Gulf note generation, uncertainty scoring, clinician checkpoints,
+              privacy options, patient-friendly Arabic instructions, and basic RAG over selected references.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section final-section reveal">
+        <p class="eyebrow">Built for clinician trust</p>
+        <h2>Write faster. Verify smarter. Keep the doctor in the loop.</h2>
+        <a class="button primary" href="narrative.html">Open narrative page</a>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>SAJIL</span>
+      <span>Arabic-first clinical intelligence for Qatar's outpatient clinics.</span>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>
