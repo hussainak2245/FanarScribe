@@ -35,10 +35,40 @@ Environment variable:
 
 ```text
 NEXT_PUBLIC_API_BASE_URL=https://fanar-scribe-api.onrender.com
+NEXT_PUBLIC_SUPABASE_URL=https://ogvpyrnidolumuvhbola.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_PwGVQ4jEkRZdt5ht9cyA-w_7ZTgLOLM
+NEXT_PUBLIC_PHYSICIAN_PROMPT_API_URL=
 ```
+
+## Supabase
+
+The database schema is in:
+
+```text
+supabase/migrations/20260619172000_sajil_clinical_workspace.sql
+```
+
+Apply it after installing and authenticating the Supabase CLI:
+
+```bash
+supabase login
+supabase link --project-ref ogvpyrnidolumuvhbola
+supabase db push
+```
+
+If you prefer a direct database push, use the project database password with the provided connection string.
+
+The migration creates:
+
+- `sajil_encounters`
+- `sajil_scribe_runs`
+- `sajil_physician_prompt_jobs`
+- `sajil_note_actions`
+
+RLS is enabled on every table and explicit grants are included for the publishable-key prototype client. Lock these policies down before real clinical use.
 
 ## Main Flow
 
-Patients -> Consultation -> Review -> Reports -> Settings.
+Scribes -> Transcript -> SOAP Note -> Review -> Recommended processing.
 
 Patient-side intake and report pages are included as lightweight supporting flows.

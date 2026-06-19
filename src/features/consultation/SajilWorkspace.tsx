@@ -1,8 +1,10 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Activity,
+  Brain,
   CalendarDays,
   FileText,
   LoaderCircle,
@@ -14,9 +16,13 @@ import {
   Square,
   Users
 } from "lucide-react";
+import { sendPhysicianPromptGhost } from "@/lib/api/physician-prompts";
 import { processScribe, type ScribeResponse, type ScribeSourceMode } from "@/lib/api/scribe";
+import { listEncounters, saveGhostPromptJob, saveNoteAction, saveScribeRun } from "@/lib/supabase/sajil";
+import { toJson } from "@/lib/supabase/types";
 
 type InputMode = "manual" | "record" | "upload";
+type RailTab = "scribes" | "patients" | "calendar" | "settings";
 
 const sampleTranscript = "دكتور عندي كتمة من أمس وما قدرت أنام";
 
@@ -169,7 +175,21 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function SignalTrace() {
+  return (
+    <span className="signal-trace" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 export function SajilWorkspace({ encounterId }: { encounterId: string }) {
+  const [activeTab, setActiveTab] = useState<RailTab>("scribes");
+  const [workspaceScribes, setWorkspaceScribes] = useState(scribes);
   const [inputMode, setInputMode] = useState<InputMode>("manual");
   const [patientRecordNumber, setPatientRecordNumber] = useState("P023");
   const [dialectHint, setDialectHint] = useState("gulf");
@@ -180,6 +200,10 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingLabel, setRecordingLabel] = useState("");
+  const [storageStatus, setStorageStatus] = useState("");
+  const [promptBridgeStatus, setPromptBridgeStatus] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
+  const [lastRunId, setLastRunId] = useState<string | undefined>();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -189,6 +213,36 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const soapSections = useMemo(() => getSoapSections(result?.soap_note), [result]);
   const questions = useMemo(() => getQuestions(result?.physician_questions), [result]);
   const uncertainTerms = useMemo(() => getUncertainTerms(result?.uncertain_words), [result]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadEncounters() {
+      const { data } = await listEncounters();
+      if (!isMounted || !data || data.length === 0) return;
+
+      setWorkspaceScribes(
+        data.map((encounter) => ({
+          id: encounter.id,
+          time: new Date(encounter.consultation_time).toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit"
+          }),
+          patient: encounter.patient_record_number,
+          summary: encounter.summary ?? "Saved consultation",
+          status: encounter.status === "review" ? "Ready" : "Draft"
+        }))
+      );
+    }
+
+    loadEncounters();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   async function startRecording() {
     setError("");
@@ -234,14 +288,18 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     event.preventDefault();
     setError("");
     setIsSubmitting(true);
+    setStorageStatus("");
+    setPromptBridgeStatus("");
+    setActionNotice("");
 
     const sourceMode: ScribeSourceMode = inputMode === "manual" ? "manual_transcript" : "audio";
+    const consultationTime = new Date().toISOString();
 
     try {
       const data = await processScribe({
         patientRecordNumber,
         encounterId,
-        consultationTime: new Date().toISOString(),
+        consultationTime,
         sourceMode,
         manualTranscript,
         audioFile,
@@ -251,6 +309,50 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         privacyMode: "prototype"
       });
       setResult(data);
+
+      const persistence = await saveScribeRun({
+        patientRecordNumber,
+        encounterId,
+        dialectHint,
+        consultationTime,
+        sourceMode,
+        manualTranscript,
+        response: data
+      });
+      setLastRunId(persistence.runId);
+      setStorageStatus(persistence.error ? `Local result ready. Supabase: ${persistence.error}` : "Saved to Supabase.");
+      setWorkspaceScribes((current) => {
+        const nextScribe = {
+          id: encounterId,
+          time: new Date(consultationTime).toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit"
+          }),
+          patient: patientRecordNumber,
+          summary: manualTranscript || "Audio consultation processed.",
+          status: "Ready"
+        };
+        return [nextScribe, ...current.filter((scribe) => scribe.id !== encounterId)];
+      });
+
+      const promptPayload = {
+        encounterId,
+        patientRecordNumber,
+        physicianQuestions: data.physician_questions,
+        uncertainty: data.uncertainty,
+        scribeResponse: data
+      };
+      const ghostResponse = await sendPhysicianPromptGhost(promptPayload);
+      setPromptBridgeStatus(ghostResponse.message);
+      await saveGhostPromptJob({
+        encounterId,
+        runId: persistence.runId,
+        endpointUrl: ghostResponse.endpointUrl,
+        payload: toJson(promptPayload) ?? {},
+        response: toJson(ghostResponse)
+      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to process this consultation.");
     } finally {
@@ -258,25 +360,118 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     }
   }
 
+  async function handleNoteAction(actionKey: string, label: string) {
+    setActionNotice(`${label}: under development.`);
+    await saveNoteAction({
+      encounterId,
+      runId: lastRunId,
+      actionKey,
+      label
+    });
+  }
+
+  const railItems: Array<{ key: RailTab; label: string; icon: typeof FileText }> = [
+    { key: "scribes", label: "Scribes", icon: FileText },
+    { key: "patients", label: "Patients", icon: Users },
+    { key: "calendar", label: "Calendar", icon: CalendarDays },
+    { key: "settings", label: "Settings", icon: Settings }
+  ];
+
+  const activeScribe = workspaceScribes.find((scribe) => scribe.id === encounterId) ?? workspaceScribes[0];
+
+  function renderSidePanel() {
+    if (activeTab === "patients") {
+      return (
+        <div className="divide-y divide-zinc-100">
+          {workspaceScribes.map((scribe) => (
+            <button key={scribe.patient} type="button" className="block w-full px-5 py-5 text-left hover:bg-zinc-50">
+              <p className="text-[15px] font-medium text-zinc-950">{scribe.patient}</p>
+              <p className="mt-1 text-[15px] leading-6 text-zinc-600">{scribe.summary}</p>
+              <p className="mt-2 text-xs text-zinc-400">Last encounter {scribe.time}</p>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    if (activeTab === "calendar") {
+      return (
+        <div className="divide-y divide-zinc-100">
+          {workspaceScribes.map((scribe) => (
+            <div key={scribe.id} className="px-5 py-5">
+              <p className="text-[15px] font-medium text-zinc-950">{scribe.time}</p>
+              <p className="mt-1 text-[15px] leading-6 text-zinc-600">{scribe.summary}</p>
+              <StatusBadge status={scribe.status} />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (activeTab === "settings") {
+      return (
+        <div className="space-y-5 px-5 py-5 text-[15px]">
+          <div>
+            <p className="font-medium text-zinc-950">Database</p>
+            <p className="mt-1 leading-6 text-zinc-500">Supabase persistence is configured through environment variables.</p>
+          </div>
+          <div>
+            <p className="font-medium text-zinc-950">Physician prompts</p>
+            <p className="mt-1 leading-6 text-zinc-500">The bridge is in ghost mode until you add the external API URL.</p>
+          </div>
+          <div>
+            <p className="font-medium text-zinc-950">Current encounter</p>
+            <p className="mt-1 text-zinc-500">{activeScribe.patient} / {encounterId}</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="divide-y divide-zinc-100">
+        {workspaceScribes.map((scribe) => (
+          <button
+            key={scribe.id}
+            type="button"
+            className={`block w-full px-5 py-5 text-left hover:bg-zinc-50 ${
+              scribe.id === encounterId ? "border-l-2 border-accent-500 bg-zinc-50" : "border-l-2 border-transparent"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[15px] font-medium text-zinc-950">{scribe.time}</p>
+                <p className="mt-0.5 text-xs text-zinc-500">{scribe.patient}</p>
+              </div>
+              <StatusBadge status={scribe.status} />
+            </div>
+            <p className="mt-2 line-clamp-2 text-[15px] leading-6 text-zinc-600">{scribe.summary}</p>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="grid min-h-screen bg-white text-[15px] text-zinc-900 lg:grid-cols-[68px_336px_1fr]">
       <aside className="flex border-r border-zinc-200 bg-white">
         <nav className="flex w-full flex-col items-center gap-3 px-2 py-5" aria-label="Primary">
-          <div className="sajil-wordmark mb-3 text-sm text-zinc-950" aria-label="SAJIL">
-            SJ
-          </div>
-          <button type="button" className="rounded-app bg-accent-50 p-2.5 text-accent-600" aria-label="Scribes" title="Scribes">
-            <FileText className="h-5 w-5" />
-          </button>
-          <button type="button" className="rounded-app p-2.5 text-zinc-500 hover:bg-zinc-100" aria-label="Patients" title="Patients">
-            <Users className="h-5 w-5" />
-          </button>
-          <button type="button" className="rounded-app p-2.5 text-zinc-500 hover:bg-zinc-100" aria-label="Calendar" title="Calendar">
-            <CalendarDays className="h-5 w-5" />
-          </button>
-          <button type="button" className="mt-auto rounded-app p-2.5 text-zinc-500 hover:bg-zinc-100" aria-label="Settings" title="Settings">
-            <Settings className="h-5 w-5" />
-          </button>
+          {railItems.map((item, index) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setActiveTab(item.key)}
+                className={`rounded-app p-2.5 ${
+                  activeTab === item.key ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"
+                } ${index === railItems.length - 1 ? "mt-auto" : ""}`}
+                aria-label={item.label}
+                title={item.label}
+              >
+                <Icon className="h-5 w-5" />
+              </button>
+            );
+          })}
         </nav>
       </aside>
 
@@ -286,6 +481,13 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
             <h1 className="sajil-wordmark text-3xl text-zinc-950">SAJIL</h1>
             <button
               type="button"
+              onClick={() => {
+                setManualTranscript("");
+                setResult(null);
+                setActionNotice("");
+                setPromptBridgeStatus("");
+                setStorageStatus("");
+              }}
               className="inline-flex h-10 items-center gap-1.5 rounded-app bg-accent-500 px-3.5 text-[15px] font-medium text-white hover:bg-accent-600"
             >
               New scribe
@@ -294,30 +496,11 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           </div>
           <label className="mt-5 flex h-11 items-center gap-2 rounded-app border border-zinc-200 bg-white px-3 text-[15px] text-zinc-500 focus-within:border-accent-500">
             <Search className="h-4 w-4" />
-            <input className="w-full bg-transparent outline-none" placeholder="Search scribes..." />
+            <input className="w-full bg-transparent outline-none" placeholder={`Search ${activeTab}...`} />
           </label>
         </div>
 
-        <div className="divide-y divide-zinc-100">
-          {scribes.map((scribe) => (
-            <button
-              key={scribe.id}
-              type="button"
-              className={`block w-full px-5 py-5 text-left hover:bg-zinc-50 ${
-                scribe.id === encounterId ? "border-l-2 border-accent-500 bg-zinc-50" : "border-l-2 border-transparent"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[15px] font-medium text-zinc-950">{scribe.time}</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">{scribe.patient}</p>
-                </div>
-                <StatusBadge status={scribe.status} />
-              </div>
-              <p className="mt-2 line-clamp-2 text-[15px] leading-6 text-zinc-600">{scribe.summary}</p>
-            </button>
-          ))}
-        </div>
+        {renderSidePanel()}
       </aside>
 
       <main className="grid min-h-screen min-w-0 bg-white lg:grid-cols-2">
@@ -329,6 +512,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 {isRecording ? "Listening..." : audioFile ? audioFile.name : `Encounter ${encounterId}`}
               </p>
             </div>
+            <SignalTrace />
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -381,7 +565,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 required
               />
             ) : (
-              <div className="flex min-h-[360px] flex-col items-center justify-center text-center text-[15px] text-zinc-500">
+              <div className="bitmap-trace flex min-h-[360px] flex-col items-center justify-center text-center text-[15px] text-zinc-500">
                 <div className={`mb-3 h-2.5 w-2.5 rounded-full ${isRecording ? "bg-accent-500" : "bg-zinc-300"}`} />
                 <p className="font-medium text-zinc-950">
                   {isRecording ? "Recording in progress" : audioFile ? "Audio ready" : "Record or upload audio"}
@@ -476,6 +660,34 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               ) : (
                 <p className="mt-2 text-sm leading-6 text-zinc-400">No review questions yet.</p>
               )}
+            </div>
+
+            <div className="mt-8 border-t border-zinc-100 pt-5">
+              <h3 className="text-sm font-medium text-zinc-950">Recommended processing</h3>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleNoteAction("illness_prediction", "Illness prediction")}
+                  className="inline-flex items-center gap-2 rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
+                >
+                  <Brain className="h-4 w-4" />
+                  Illness prediction
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNoteAction("risk_triage", "Risk triage")}
+                  className="inline-flex items-center gap-2 rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
+                >
+                  <Activity className="h-4 w-4" />
+                  Risk triage
+                </button>
+              </div>
+              {actionNotice ? <p className="mt-3 text-sm text-zinc-500">{actionNotice}</p> : null}
+            </div>
+
+            <div className="mt-8 border-t border-zinc-100 pt-5 text-sm leading-6 text-zinc-400">
+              {storageStatus ? <p>{storageStatus}</p> : null}
+              {promptBridgeStatus ? <p>{promptBridgeStatus}</p> : null}
             </div>
           </div>
         </section>
