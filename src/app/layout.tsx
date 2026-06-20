@@ -3,7 +3,10 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SAJIL",
+  title: {
+    template: "SAJIL — %s",
+    default: "SAJIL"
+  },
   description: "Arabic-first intelligent clinical scribe for physicians."
 };
 

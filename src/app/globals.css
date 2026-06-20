@@ -127,6 +127,25 @@ select {
   background: var(--surface);
 }
 
+/* Bird mascot idle animation — landing page only */
+@keyframes bird-bob {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  30% {
+    transform: translateY(-6px) rotate(-1deg);
+  }
+  70% {
+    transform: translateY(-3px) rotate(0.5deg);
+  }
+}
+
+.bird-idle {
+  animation: bird-bob 3.6s ease-in-out infinite;
+  transform-origin: center bottom;
+  will-change: transform;
+}
+
 /* Task 3: Pixel micro-animations */
 
 /* Pulsing red ring on the recording dot while actively recording */

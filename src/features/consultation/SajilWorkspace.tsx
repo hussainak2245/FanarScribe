@@ -712,6 +712,13 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       {/* Icon rail — hidden on mobile (bottom nav replaces it), visible lg+ */}
       <aside className="hidden lg:flex border-r border-zinc-200 bg-white">
         <nav className="flex w-full flex-col items-center gap-3 px-2 py-5" aria-label="Primary">
+          {/* S monogram — SAJIL brand mark, no animation in the clinical view */}
+          <div
+            className="sajil-wordmark mb-1 flex h-10 w-10 select-none items-center justify-center text-xl text-accent-500"
+            aria-hidden="true"
+          >
+            S
+          </div>
           {railItems.map((item, index) => {
             const Icon = item.icon;
             return (
