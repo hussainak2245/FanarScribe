@@ -4,6 +4,9 @@ Arabic-first intelligent clinical scribe frontend for physicians.
 
 This prototype uses Next.js App Router, TypeScript, Tailwind CSS, Lucide icons, and the SAJIL FastAPI backend.
 
+Deprecated experiments and static prototypes are archived in `/dump`.
+Major development changes are tracked in `LOGS.md`.
+
 ## Run Locally
 
 ```bash
@@ -45,7 +48,8 @@ NEXT_PUBLIC_PHYSICIAN_PROMPT_API_URL=
 The database schema is in:
 
 ```text
-supabase/migrations/20260619172000_sajil_clinical_workspace.sql
+supabase/migrations/
+migrations/
 ```
 
 Apply it after installing and authenticating the Supabase CLI:
@@ -64,11 +68,12 @@ The migration creates:
 - `sajil_scribe_runs`
 - `sajil_physician_prompt_jobs`
 - `sajil_note_actions`
+- `sajil_copilot_messages`
 
 RLS is enabled on every table and explicit grants are included for the publishable-key prototype client. Lock these policies down before real clinical use.
 
 ## Main Flow
 
-Scribes -> Transcript -> SOAP Note -> Review -> Recommended processing.
+Patient Context -> Transcript + SOAP Workspace -> Clinical Copilot -> Review actions.
 
-Patient-side intake and report pages are included as lightweight supporting flows.
+The SOAP note remains visible while physicians interact with Clinical Copilot prompts and placeholder tools.

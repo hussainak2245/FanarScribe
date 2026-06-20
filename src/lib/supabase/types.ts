@@ -24,8 +24,18 @@ export type SajilScribeRunRow = {
   claims: Json | null;
   uncertainty: Json | null;
   uncertain_words: Json | null;
+  uncertainty_spans: Json | null;
   physician_questions: Json | null;
+  physician_prompts: Json | null;
+  note_actions: Json | null;
+  prompt_followup: Json | null;
   providers_used: Json | null;
+  models_used: Json | null;
+  inference: Json | null;
+  audio: Json | null;
+  speaker_context: Json | null;
+  request_id: string | null;
+  raw_response: Json | null;
   frontend_hints: Json | null;
   status: "queued" | "processing" | "completed" | "failed";
   created_at: string;
@@ -50,6 +60,16 @@ export type SajilNoteActionRow = {
   label: string;
   status: "under_development" | "queued" | "completed" | "failed";
   result: Json | null;
+  created_at: string;
+};
+
+export type SajilCopilotMessageRow = {
+  id: string;
+  encounter_id: string;
+  scribe_run_id: string | null;
+  role: "assistant" | "physician" | "system" | "tool";
+  content: string;
+  payload: Json;
   created_at: string;
 };
 
@@ -78,6 +98,12 @@ export type Database = {
         Row: SajilNoteActionRow;
         Insert: Partial<SajilNoteActionRow> & Pick<SajilNoteActionRow, "encounter_id" | "action_key" | "label">;
         Update: Partial<SajilNoteActionRow>;
+        Relationships: [];
+      };
+      sajil_copilot_messages: {
+        Row: SajilCopilotMessageRow;
+        Insert: Partial<SajilCopilotMessageRow> & Pick<SajilCopilotMessageRow, "encounter_id" | "role" | "content">;
+        Update: Partial<SajilCopilotMessageRow>;
         Relationships: [];
       };
     };

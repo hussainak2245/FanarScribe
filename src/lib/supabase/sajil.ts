@@ -55,8 +55,18 @@ export async function saveScribeRun(input: SaveScribeRunInput) {
       claims: toJson(input.response.claims),
       uncertainty: toJson(input.response.uncertainty),
       uncertain_words: toJson(input.response.uncertain_words),
+      uncertainty_spans: toJson(input.response.uncertainty_spans),
       physician_questions: toJson(input.response.physician_questions),
+      physician_prompts: toJson(input.response.physician_prompts),
+      note_actions: toJson(input.response.note_actions),
+      prompt_followup: toJson(input.response.prompt_followup),
       providers_used: toJson(input.response.providers_used),
+      models_used: toJson(input.response.models_used),
+      inference: toJson(input.response.inference),
+      audio: toJson(input.response.audio),
+      speaker_context: toJson(input.response.speaker_context),
+      request_id: input.response.request_id ?? null,
+      raw_response: toJson(input.response),
       frontend_hints: toJson(input.response.frontend_hints),
       status: "completed"
     })
@@ -68,6 +78,47 @@ export async function saveScribeRun(input: SaveScribeRunInput) {
   }
 
   return { runId: run.data.id, error: undefined };
+}
+
+export async function listCopilotMessages(encounterId: string) {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { data: undefined, error: "Supabase is not configured" };
+
+  const { data, error } = await supabase
+    .from("sajil_copilot_messages")
+    .select("id, encounter_id, scribe_run_id, role, content, payload, created_at")
+    .eq("encounter_id", encounterId)
+    .order("created_at", { ascending: true })
+    .limit(50);
+
+  return { data, error: error?.message };
+}
+
+export async function saveCopilotMessage({
+  encounterId,
+  runId,
+  role,
+  content,
+  payload
+}: {
+  encounterId: string;
+  runId?: string;
+  role: "assistant" | "physician" | "system" | "tool";
+  content: string;
+  payload?: Json;
+}) {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { error: "Supabase is not configured" };
+
+  const { error } = await supabase.from("sajil_copilot_messages").insert({
+    encounter_id: encounterId,
+    scribe_run_id: runId ?? null,
+    role,
+    content,
+    payload: payload ?? {}
+  });
+
+  return { error: error?.message };
 }
 
 export async function listEncounters() {

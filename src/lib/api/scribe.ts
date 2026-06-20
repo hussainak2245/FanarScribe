@@ -2,6 +2,22 @@ import { API_BASE_URL } from "./client";
 
 export type ScribeSourceMode = "manual_transcript" | "audio";
 
+export type PromptAnswer = {
+  selected_value?: string;
+  label?: string;
+  text?: string;
+};
+
+export type PhysicianPromptResponseInput = {
+  requestId: string;
+  promptId: string;
+  promptType: string;
+  question: string;
+  answer: PromptAnswer;
+  encounterId: string;
+  conversationHistory?: unknown[];
+};
+
 export type ProcessScribeInput = {
   patientRecordNumber: string;
   encounterId: string;
@@ -18,16 +34,36 @@ export type ProcessScribeInput = {
 };
 
 export type ScribeResponse = {
+  request_id?: string;
+  status?: string;
+  audio?: unknown;
+  speaker_context?: unknown;
+  models_used?: unknown;
+  inference?: unknown;
   transcription?: unknown;
   translation?: unknown;
   soap_note?: unknown;
   claims?: unknown;
   uncertainty?: unknown;
   uncertain_words?: unknown;
+  uncertainty_spans?: unknown;
   physician_questions?: unknown;
+  physician_prompts?: unknown;
+  note_actions?: unknown;
+  prompt_followup?: unknown;
   privacy?: unknown;
   frontend_hints?: unknown;
   providers_used?: unknown;
+};
+
+export type PromptResponse = {
+  assistant_message?: string;
+  note_update_suggestion?: unknown;
+  claim_update_suggestion?: unknown;
+  next_prompts?: unknown;
+  models_used?: unknown;
+  inference?: unknown;
+  warnings?: unknown;
 };
 
 function appendIfPresent(formData: FormData, key: string, value?: string) {
@@ -69,4 +105,42 @@ export async function processScribe(input: ProcessScribeInput): Promise<ScribeRe
   }
 
   return response.json() as Promise<ScribeResponse>;
+}
+
+export async function respondToPhysicianPrompt(input: PhysicianPromptResponseInput): Promise<PromptResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/scribe/prompt-response`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      request_id: input.requestId,
+      prompt_id: input.promptId,
+      prompt_type: input.promptType,
+      question: input.question,
+      answer: input.answer,
+      scribe_context: {
+        encounter_id: input.encounterId
+      },
+      conversation_history: input.conversationHistory ?? []
+    })
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Prompt response failed with ${response.status}`);
+  }
+
+  return response.json() as Promise<PromptResponse>;
+}
+
+export async function runNoteAction(actionId: string) {
+  const response = await fetch(`${API_BASE_URL}/api/v1/scribe/note-actions/${encodeURIComponent(actionId)}`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Note action failed with ${response.status}`);
+  }
+
+  return response.json() as Promise<{ status?: string }>;
 }
