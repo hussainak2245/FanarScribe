@@ -14,10 +14,10 @@ export default function HomePage() {
           <section className="flex-1">
             <p className="sajil-wordmark text-4xl text-zinc-950 sm:text-6xl">SAJIL</p>
             <h1 className="mt-8 max-w-2xl text-3xl font-medium leading-tight text-zinc-950 sm:text-5xl">
-              Minimal clinical scribing for Arabic consultations.
+              A physician-in-the-loop copilot for Arabic consultations.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-600">
-              Record or upload a consultation, generate a SOAP note, and review uncertainty without leaving the document.
+              SAJIL drafts the note, highlights uncertainty, and keeps final review in the physician&apos;s hands.
             </p>
             <Link
               className="mt-8 inline-flex h-11 items-center gap-2 rounded-app bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600"

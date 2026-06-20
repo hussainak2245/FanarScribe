@@ -6,22 +6,21 @@ import {
   Activity,
   BookOpen,
   Brain,
-  Calculator,
   Check,
+  CircleHelp,
   ClipboardList,
-  Dna,
   FileText,
-  Image,
   LoaderCircle,
   MessageCircle,
   Mic,
   Paperclip,
-  Scale,
+  Plus,
+  ScrollText,
   Send,
   Settings,
   Square,
-  Stethoscope,
-  Users
+  Users,
+  Wrench
 } from "lucide-react";
 import {
   processScribe,
@@ -130,13 +129,12 @@ function validateAudioFile(file: File): string | null {
 }
 
 const toolItems = [
-  { label: "Knowledge", icon: BookOpen },
-  { label: "Guidelines", icon: ClipboardList },
-  { label: "Risk", icon: Scale },
-  { label: "Imaging", icon: Image },
-  { label: "Genetics", icon: Dna },
-  { label: "Calculator", icon: Calculator },
-  { label: "Differential", icon: Stethoscope }
+  { label: "Transcript", icon: ScrollText },
+  { label: "Note", icon: FileText },
+  { label: "Uncertainty", icon: CircleHelp },
+  { label: "Evidence", icon: BookOpen },
+  { label: "Tools", icon: Wrench },
+  { label: "Settings", icon: Settings }
 ];
 
 function asText(value: unknown): string {
@@ -236,6 +234,42 @@ function getPhysicianPrompts(response: ScribeResponse | null): PhysicianPrompt[]
       return prompts;
     }, [])
     .slice(0, 4);
+}
+
+function getDefaultReviewPrompts(): PhysicianPrompt[] {
+  return [
+    {
+      id: "review_scope",
+      type: "single_choice",
+      question:
+        'Could you clarify what the patient meant by "creating something beautiful and user-friendly"? Is this related to the current health concern?',
+      options: [
+        { label: "Not related to health concern", value: "not_related" },
+        { label: "Patient meant something else", value: "different_meaning" },
+        { label: "Add correction manually", value: "manual_correction" }
+      ]
+    },
+    {
+      id: "review_allergy",
+      type: "single_choice",
+      question: "Was allergy status discussed?",
+      options: [
+        { label: "No known allergies", value: "no_known_allergies" },
+        { label: "Allergies present", value: "allergies_present" },
+        { label: "Not discussed", value: "not_discussed" }
+      ]
+    },
+    {
+      id: "review_next_step",
+      type: "single_choice",
+      question: "How should this draft note move forward?",
+      options: [
+        { label: "Keep as draft", value: "keep_draft" },
+        { label: "Needs physician edits", value: "needs_edits" },
+        { label: "Ready for final review", value: "ready_final_review" }
+      ]
+    }
+  ];
 }
 
 function getNoteActions(response: ScribeResponse | null): NoteAction[] {
@@ -371,9 +405,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const translationText = asText(result?.translation);
   const soapSections = useMemo(() => getSoapSections(result?.soap_note), [result]);
   const prompts = useMemo(() => getPhysicianPrompts(result), [result]);
+  const reviewPrompts = useMemo(() => (result && prompts.length === 0 ? getDefaultReviewPrompts() : prompts), [prompts, result]);
   const noteActions = useMemo(() => getNoteActions(result), [result]);
   const uncertainTerms = useMemo(() => getUncertainTerms(result?.uncertain_words), [result]);
   const activeScribe = workspaceScribes.find((scribe) => scribe.id === encounterId) ?? workspaceScribes[0];
+  const answeredPromptCount = reviewPrompts.filter((prompt) => promptAnswers[prompt.id]).length;
+  const currentPrompt = reviewPrompts.find((prompt) => !promptAnswers[prompt.id]);
 
   useEffect(() => {
     let isMounted = true;
@@ -541,10 +578,11 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         response: toJson(ghostResponse)
       });
 
+      const nextPrompts = getPhysicianPrompts(data);
       addChatMessage({
         role: "assistant",
         content:
-          prompts.length > 0
+          nextPrompts.length > 0
             ? "I found clarifications to review. Answer them here and I will suggest note updates."
             : "The note is generated. I can help clarify risks, evidence, and follow-up questions."
       });
@@ -623,7 +661,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   }
 
   const railItems: Array<{ key: RailTab; label: string; icon: typeof FileText }> = [
-    { key: "scribes", label: "Scribes", icon: FileText },
+    { key: "scribes", label: "Notes", icon: FileText },
     { key: "patients", label: "Patients", icon: Users },
     { key: "copilot", label: "Clinical Copilot", icon: MessageCircle },
     { key: "settings", label: "Settings", icon: Settings }
@@ -648,14 +686,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       return (
         <div className="space-y-5 px-5 py-5 text-[15px]">
           <div>
-            <p className="font-medium text-zinc-950">History</p>
-            <p className="mt-2 text-zinc-500">Today</p>
-            <p className="text-zinc-500">This patient</p>
-            <p className="text-zinc-500">This consultation</p>
-          </div>
-          <div>
             <p className="font-medium text-zinc-950">Available tools</p>
-            <p className="mt-1 leading-6 text-zinc-500">Guidelines, risk, imaging, genetics, calculators, and differential support are scaffolded.</p>
+            <p className="mt-1 leading-6 text-zinc-500">Evidence, uncertainty, tools, and follow-up support.</p>
           </div>
         </div>
       );
@@ -705,20 +737,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
 
   return (
     // Task 2 & 4: responsive grid — 1 col on mobile, 2 col on md, 3 col on lg
-    <form
-      onSubmit={handleSubmit}
+    <div
       className="grid min-h-dvh bg-white text-[15px] text-zinc-900 grid-cols-1 lg:grid-cols-[68px_320px_1fr]"
     >
       {/* Icon rail — hidden on mobile (bottom nav replaces it), visible lg+ */}
       <aside className="hidden lg:flex border-r border-zinc-200 bg-white">
         <nav className="flex w-full flex-col items-center gap-3 px-2 py-5" aria-label="Primary">
-          {/* S monogram — SAJIL brand mark, no animation in the clinical view */}
-          <div
-            className="sajil-wordmark mb-1 flex h-10 w-10 select-none items-center justify-center text-xl text-accent-500"
-            aria-hidden="true"
-          >
-            S
-          </div>
           {railItems.map((item, index) => {
             const Icon = item.icon;
             return (
@@ -764,14 +788,16 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   }
                 ]);
               }}
-              className="inline-flex h-11 items-center rounded-app bg-accent-500 px-3.5 text-[15px] font-medium text-white hover:bg-accent-600"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-app border border-zinc-200 text-zinc-700 hover:border-zinc-950 hover:text-zinc-950"
+              aria-label="New note"
+              title="New note"
             >
-              New scribe
+              <Plus className="h-4 w-4" />
             </button>
           </div>
           <label className="mt-5 flex h-11 items-center gap-2 rounded-app border border-zinc-200 bg-white px-3 text-[15px] text-zinc-500 focus-within:border-accent-500">
             <FileText className="h-4 w-4" />
-            <input className="w-full bg-transparent outline-none" placeholder={`Search ${activeTab}...`} />
+            <input className="w-full bg-transparent outline-none" placeholder="Search notes" />
           </label>
         </div>
         {renderSidePanel()}
@@ -797,7 +823,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase text-zinc-400">Patient Context</p>
               <h2 className="mt-1 text-xl font-medium text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
-              <p className="mt-1 text-sm text-zinc-500 line-clamp-2">Dialect: {dialectHint}. Status: {activeScribe.status}.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <select
@@ -830,17 +855,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               mobilePanel === "copilot" ? "hidden lg:block" : "block"
             }`}
           >
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-medium text-zinc-950">Main Clinical Document</h2>
-                <p className="text-sm text-zinc-500">Transcript, uncertainty, SOAP note, and physician review actions.</p>
-              </div>
-              {/* Task 3: signal trace is always visible but more prominent when submitting */}
-              <SignalTrace />
-            </div>
-
             {/* Transcript section */}
-            <section className="border-b border-zinc-100 pb-6">
+            <form onSubmit={handleSubmit} className="border-b border-zinc-100 pb-6">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <h3 className="text-sm font-medium uppercase text-zinc-500">Transcript</h3>
                 <div className="flex items-center gap-1">
@@ -902,7 +918,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                     value={manualTranscript}
                     onChange={(event) => setManualTranscript(event.target.value)}
                     dir="rtl"
-                    className="arabic-text min-h-52 w-full resize-none bg-transparent text-lg leading-9 text-zinc-950 outline-none placeholder:text-zinc-400"
+                    className="arabic-text min-h-36 w-full resize-none border border-zinc-200 bg-white p-4 text-base leading-8 text-zinc-950 outline-none placeholder:text-zinc-400 focus:border-zinc-950"
                     placeholder="اكتب نص الاستشارة هنا..."
                     required
                   />
@@ -914,7 +930,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   )}
                 </div>
               ) : (
-                <div className="bitmap-trace flex min-h-52 flex-col items-center justify-center text-center text-[15px] text-zinc-500">
+                <div className="bitmap-trace flex min-h-32 flex-col items-center justify-center border border-zinc-200 text-center text-[15px] text-zinc-500">
                   {/* Task 3: pixel pulse animation on recording dot */}
                   <div
                     className={`mb-3 h-3 w-3 rounded-full transition-colors ${
@@ -934,6 +950,37 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 </div>
               )}
 
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 text-sm text-zinc-500">
+                  {error ? (
+                    <span className="inline-flex items-center gap-2 text-red-600">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                      {error}
+                    </span>
+                  ) : storageStatus ? (
+                    storageStatus
+                  ) : audioFile ? (
+                    "Audio ready for note generation."
+                  ) : (
+                    "Doctor reviews before anything is saved."
+                  )}
+                </div>
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmitting ||
+                    (inputMode === "manual" && !manualTranscript.trim()) ||
+                    (inputMode !== "manual" && !audioFile)
+                  }
+                  className={`inline-flex h-11 items-center gap-2 rounded-app px-4 text-[15px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isSubmitting ? "pixel-generating" : "bg-zinc-950 hover:bg-accent-600"
+                  }`}
+                >
+                  {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                  {isSubmitting ? "Generating…" : "Generate note"}
+                </button>
+              </div>
+
               {result ? (
                 <div className="mt-5 border-t border-zinc-100 pt-5">
                   <p className="text-sm font-medium text-zinc-950">Output transcript</p>
@@ -943,22 +990,26 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   {translationText ? <p className="mt-4 text-sm leading-6 text-zinc-500">{translationText}</p> : null}
                 </div>
               ) : null}
-            </section>
+            </form>
 
             {/* SOAP note section */}
             <section className="border-b border-zinc-100 py-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-medium uppercase text-zinc-500">SOAP Note</h3>
-                <StatusBadge status={soapSections.length > 0 ? "Saved" : "Draft"} />
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold uppercase text-zinc-950">SOAP Note</h3>
+                <span className="border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700">
+                  Overall quality level: {soapSections.length > 0 ? "Needs review" : "Draft"}
+                </span>
               </div>
               {soapSections.length > 0 ? (
-                <div className="space-y-7">
+                <div className="border-y border-zinc-950 bg-white">
                   {soapSections.map((section) => (
-                    <article key={section.title}>
-                      <h4 className="text-xs font-medium uppercase text-zinc-500">{section.title}</h4>
+                    <article key={section.title} className="border-b border-zinc-200 py-5 last:border-b-0">
+                      <h4 className="text-xs font-semibold uppercase text-zinc-950">
+                        {section.title.charAt(0).toUpperCase() + section.title.slice(1)}
+                      </h4>
                       {/* Task 6: show "Not provided" instead of omitting empty sections */}
                       {section.body ? (
-                        <p className="mt-2 whitespace-pre-wrap text-base leading-8 text-zinc-800">{section.body}</p>
+                        <p className="mt-2 whitespace-pre-wrap text-base leading-8 text-zinc-900">{section.body}</p>
                       ) : (
                         <p className="mt-2 text-base italic text-zinc-400">Not provided</p>
                       )}
@@ -966,129 +1017,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   ))}
                 </div>
               ) : (
-                <p className="py-10 text-center text-base text-zinc-400">Generate a SOAP note from the transcript.</p>
+                <p className="border-y border-zinc-200 py-8 text-center text-base text-zinc-400">
+                  Generate a SOAP note from the transcript.
+                </p>
               )}
             </section>
 
-            {/* Physician review section */}
-            <section className="py-6">
-              <h3 className="text-sm font-medium uppercase text-zinc-500">Physician Review Actions</h3>
-              {prompts.length > 0 ? (
-                // Task 5: interactive checkpoint UX with text input, resolved state, per-prompt answers
-                <div className="mt-4 space-y-5">
-                  {prompts.map((prompt) => {
-                    const isAnswered = Boolean(promptAnswers[prompt.id]);
-                    return (
-                      <article
-                        key={prompt.id}
-                        className={`rounded-app border-l-2 pl-4 transition-opacity ${
-                          isAnswered ? "border-emerald-400 opacity-70" : "border-accent-500"
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          {isAnswered && (
-                            <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
-                          )}
-                          <p className="font-medium leading-6 text-zinc-950">{prompt.question}</p>
-                        </div>
-                        {isAnswered ? (
-                          <p className="mt-1 text-sm text-emerald-600">
-                            Answered: {promptAnswers[prompt.id]}
-                          </p>
-                        ) : (
-                          <>
-                            {prompt.reason ? (
-                              <p className="mt-1 text-sm leading-6 text-zinc-500">{prompt.reason}</p>
-                            ) : null}
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {prompt.options.length > 0 ? (
-                                <>
-                                  {prompt.options.map((option) => (
-                                    <button
-                                      key={`${prompt.id}-${option.value}`}
-                                      type="button"
-                                      onClick={() => handlePromptAnswer(prompt, option)}
-                                      className="min-h-[44px] rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
-                                    >
-                                      {option.label}
-                                    </button>
-                                  ))}
-                                  <button
-                                    type="button"
-                                    onClick={() => handlePromptAnswer(prompt, { text: "Confirmed as documented" })}
-                                    className="min-h-[44px] rounded-app border border-zinc-100 px-3 py-2 text-sm font-medium text-zinc-400 hover:border-zinc-200 hover:text-zinc-600"
-                                  >
-                                    Confirm as-is
-                                  </button>
-                                </>
-                              ) : (
-                                // Task 5: free-text answer input when no predefined options
-                                <div className="flex w-full gap-2">
-                                  <input
-                                    value={promptInputs[prompt.id] ?? ""}
-                                    onChange={(event) =>
-                                      setPromptInputs((prev) => ({
-                                        ...prev,
-                                        [prompt.id]: event.target.value
-                                      }))
-                                    }
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter" && !event.shiftKey) {
-                                        event.preventDefault();
-                                        const text = promptInputs[prompt.id]?.trim();
-                                        if (text) handlePromptAnswer(prompt, { text });
-                                      }
-                                    }}
-                                    className="min-h-[44px] flex-1 rounded-app border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-accent-500"
-                                    placeholder="Type your answer or correction…"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const text = promptInputs[prompt.id]?.trim();
-                                      if (text) handlePromptAnswer(prompt, { text });
-                                    }}
-                                    className="min-h-[44px] rounded-app border border-accent-200 bg-accent-50 px-4 text-sm font-medium text-accent-600 hover:bg-accent-100 disabled:opacity-40"
-                                    disabled={!promptInputs[prompt.id]?.trim()}
-                                  >
-                                    Submit
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </article>
-                    );
-                  })}
-
-                  {/* Progress indicator */}
-                  <p className="text-xs text-zinc-400">
-                    {Object.keys(promptAnswers).length} of {prompts.length} resolved
-                  </p>
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-zinc-400">Prompt questions will appear here after generation.</p>
-              )}
-
-              <div className="mt-7">
-                <h4 className="text-sm font-medium text-zinc-950">Recommended processing</h4>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {noteActions.map((action, index) => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      onClick={() => handleNoteAction(action)}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
-                    >
-                      {index === 0 ? <Brain className="h-4 w-4" /> : <Activity className="h-4 w-4" />}
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-                {actionNotice ? <p className="mt-3 text-sm text-zinc-500">{actionNotice}</p> : null}
-              </div>
-            </section>
           </div>
 
           {/* Clinical Copilot panel — hidden on mobile unless mobilePanel === "copilot" */}
@@ -1101,25 +1035,149 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-medium text-zinc-950">Clinical Copilot</h2>
-                  <p className="mt-1 text-sm text-zinc-500">Model: ready · Tools: skeleton · Context: {patientRecordNumber}</p>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {result ? "Draft ready for physician review" : "Waiting for note generation"} · {patientRecordNumber}
+                  </p>
                 </div>
-                <MessageCircle className="h-5 w-5 text-accent-500" />
+                {isSubmitting ? <SignalTrace /> : <MessageCircle className="h-5 w-5 text-accent-500" />}
               </div>
             </header>
 
             <div className="min-h-0 overflow-y-auto px-5 py-5">
-              <div className="space-y-4">
+              <div className="space-y-6">
+                <section className="border-l-2 border-zinc-950 pl-4">
+                  <p className="text-xs font-medium uppercase text-zinc-400">AI status</p>
+                  <p className="mt-1 text-sm leading-6 text-zinc-800">
+                    {result
+                      ? "I drafted the note and will ask one review question at a time. The final note still needs physician review."
+                      : "Generate a note from the transcript, then I will guide the review here."}
+                  </p>
+                </section>
+
+                <section>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-xs font-medium uppercase text-zinc-400">Uncertainty review</p>
+                    {reviewPrompts.length > 0 ? (
+                      <span className="text-xs text-zinc-500">
+                        {answeredPromptCount} of {reviewPrompts.length}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {currentPrompt ? (
+                    <article className="border border-zinc-200 bg-white p-4">
+                      <p className="text-xs font-semibold uppercase text-accent-600">
+                        Question {answeredPromptCount + 1} of {reviewPrompts.length}
+                      </p>
+                      <p className="mt-2 text-[15px] font-medium leading-7 text-zinc-950">{currentPrompt.question}</p>
+                      {currentPrompt.reason ? (
+                        <p className="mt-2 text-sm leading-6 text-zinc-500">{currentPrompt.reason}</p>
+                      ) : null}
+
+                      <div className="mt-4 space-y-2">
+                        {currentPrompt.options.map((option) => (
+                          <button
+                            key={`${currentPrompt.id}-${option.value}`}
+                            type="button"
+                            onClick={() => handlePromptAnswer(currentPrompt, option)}
+                            className="block min-h-[44px] w-full border border-zinc-200 px-3 py-2 text-left text-sm font-medium text-zinc-800 hover:border-zinc-950"
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          value={promptInputs[currentPrompt.id] ?? ""}
+                          onChange={(event) =>
+                            setPromptInputs((prev) => ({
+                              ...prev,
+                              [currentPrompt.id]: event.target.value
+                            }))
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              const text = promptInputs[currentPrompt.id]?.trim();
+                              if (text) handlePromptAnswer(currentPrompt, { text });
+                            }
+                          }}
+                          className="min-h-[44px] min-w-0 flex-1 rounded-app border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-950"
+                          placeholder="Add correction manually"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const text = promptInputs[currentPrompt.id]?.trim();
+                            if (text) handlePromptAnswer(currentPrompt, { text });
+                          }}
+                          className="min-h-[44px] rounded-app bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
+                          disabled={!promptInputs[currentPrompt.id]?.trim()}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </article>
+                  ) : result && reviewPrompts.length > 0 ? (
+                    <div className="border border-emerald-200 bg-emerald-50 p-4">
+                      <div className="flex items-start gap-2">
+                        <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+                        <p className="text-sm leading-6 text-emerald-800">
+                          Review questions are answered. The draft is ready for final physician review.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="border border-zinc-200 p-4 text-sm leading-6 text-zinc-500">
+                      Review questions will appear after note generation.
+                    </p>
+                  )}
+
+                  {answeredPromptCount > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      {reviewPrompts.filter((prompt) => promptAnswers[prompt.id]).map((prompt) => (
+                        <div key={prompt.id} className="border-l-2 border-emerald-500 pl-3">
+                          <p className="text-xs font-medium uppercase text-zinc-400">Answered</p>
+                          <p className="mt-1 text-sm text-zinc-700">{promptAnswers[prompt.id]}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+
+                <section>
+                  <p className="text-xs font-medium uppercase text-zinc-400">Tool suggestions</p>
+                  <div className="mt-3 space-y-2">
+                    {noteActions.map((action, index) => (
+                      <button
+                        key={action.id}
+                        type="button"
+                        onClick={() => handleNoteAction(action)}
+                        className="flex min-h-[44px] w-full items-center gap-2 border border-zinc-200 px-3 py-2 text-left text-sm font-medium text-zinc-800 hover:border-zinc-950"
+                      >
+                        {index === 0 ? <Brain className="h-4 w-4 text-zinc-500" /> : <Activity className="h-4 w-4 text-zinc-500" />}
+                        <span>{action.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {actionNotice ? <p className="mt-3 text-sm text-zinc-500">{actionNotice}</p> : null}
+                </section>
+
+                <section className="space-y-4">
+                  <p className="text-xs font-medium uppercase text-zinc-400">Messages</p>
                 {chatMessages.map((message) => (
                   <article key={message.id} className={message.role === "physician" ? "text-right" : ""}>
                     <p className="text-xs font-medium uppercase text-zinc-400">{message.role} · {message.createdAt}</p>
                     <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-zinc-800">{message.content}</p>
                   </article>
                 ))}
+                </section>
               </div>
             </div>
 
             <div className="border-t border-zinc-100 px-5 py-3">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex gap-2 overflow-x-auto pb-1">
                 {toolItems.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -1129,10 +1187,10 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                       onClick={() => {
                         addChatMessage({
                           role: "tool",
-                          content: `${item.label} tool is scaffolded for future clinical support.`
+                          content: `${item.label} support is available for this consultation review.`
                         });
                       }}
-                      className="rounded-app p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-zinc-500 hover:bg-zinc-100 hover:text-accent-600"
+                      className="flex min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-app text-zinc-500 hover:bg-zinc-100 hover:text-accent-600"
                       title={item.label}
                       aria-label={item.label}
                     >
@@ -1140,12 +1198,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                     </button>
                   );
                 })}
-              </div>
-              <div className="mt-3 grid grid-cols-4 gap-2 text-xs text-zinc-400">
-                <span>Today</span>
-                <span>Yesterday</span>
-                <span>This Patient</span>
-                <span>This Consultation</span>
               </div>
             </div>
 
@@ -1167,35 +1219,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               </form>
             </div>
           </aside>
-        </section>
-
-        {/* Footer: error/status + generate button */}
-        <section className="flex-shrink-0 border-t border-zinc-200 px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-zinc-500">
-              {error ? (
-                <span className="inline-flex items-center gap-2 text-red-600">
-                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  {error}
-                </span>
-              ) : storageStatus ? (
-                storageStatus
-              ) : (
-                "Ready"
-              )}
-            </div>
-            {/* Task 3: pixel shimmer animation while generating */}
-            <button
-              type="submit"
-              disabled={isSubmitting || (inputMode !== "manual" && !audioFile)}
-              className={`inline-flex h-11 items-center gap-2 rounded-app px-4 text-[15px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${
-                isSubmitting ? "pixel-generating" : "bg-accent-500 hover:bg-accent-600"
-              }`}
-            >
-              {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-              {isSubmitting ? "Generating…" : "Generate note"}
-            </button>
-          </div>
         </section>
 
         {/* Task 4: Mobile bottom navigation — hidden on lg+ */}
@@ -1232,6 +1255,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           </button>
         </nav>
       </main>
-    </form>
+    </div>
   );
 }
