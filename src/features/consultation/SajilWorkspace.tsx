@@ -7,6 +7,7 @@ import {
   BookOpen,
   Brain,
   Calculator,
+  Check,
   ClipboardList,
   Dna,
   FileText,
@@ -43,6 +44,7 @@ import { toJson } from "@/lib/supabase/types";
 
 type InputMode = "manual" | "record" | "upload";
 type RailTab = "scribes" | "patients" | "copilot" | "settings";
+type MobilePanel = "list" | "main" | "copilot";
 type ChatRole = "assistant" | "physician" | "system" | "tool";
 
 type ChatMessage = {
@@ -74,8 +76,6 @@ type NoteAction = {
   description?: string;
 };
 
-const sampleTranscript = "دكتور عندي كتمة من أمس وما قدرت أنام";
-
 const initialScribes: WorkspaceScribe[] = [
   {
     id: "E001",
@@ -99,6 +99,35 @@ const initialScribes: WorkspaceScribe[] = [
     status: "Draft"
   }
 ];
+
+// Task 7: Supported audio formats for upload validation
+const SUPPORTED_AUDIO_TYPES = new Set([
+  "audio/mp3",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/m4a",
+  "audio/x-m4a",
+  "audio/mp4",
+  "video/mp4",
+  "audio/aac",
+  "audio/ogg",
+  "audio/webm",
+  "audio/flac"
+]);
+const MAX_AUDIO_FILE_SIZE = 200 * 1024 * 1024; // 200 MB
+const SUPPORTED_EXTENSIONS = ["mp3", "wav", "m4a", "mp4", "aac", "ogg", "webm", "flac"];
+
+function validateAudioFile(file: File): string | null {
+  if (file.size > MAX_AUDIO_FILE_SIZE) {
+    return `File too large (${Math.round(file.size / 1024 / 1024)} MB). Maximum is 200 MB.`;
+  }
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!SUPPORTED_AUDIO_TYPES.has(file.type) && !SUPPORTED_EXTENSIONS.includes(ext)) {
+    return `Unsupported format. Supported: ${SUPPORTED_EXTENSIONS.map((e) => e.toUpperCase()).join(", ")}.`;
+  }
+  return null;
+}
 
 const toolItems = [
   { label: "Knowledge", icon: BookOpen },
@@ -158,6 +187,7 @@ function getArray(value: unknown): unknown[] {
   return [];
 }
 
+// Task 6: Always emit all 4 SOAP sections; empty body means "Not provided" in render
 function getSoapSections(value: unknown): Array<{ title: string; body: string }> {
   if (!value) return [];
   if (typeof value === "string") return [{ title: "SOAP", body: value }];
@@ -168,11 +198,10 @@ function getSoapSections(value: unknown): Array<{ title: string; body: string }>
     record.sections && typeof record.sections === "object" ? (record.sections as Record<string, unknown>) : record;
 
   const order = ["subjective", "objective", "assessment", "plan"];
-  const sections = order
-    .map((key) => ({ title: key, body: asText(source[key]) }))
-    .filter((section) => section.body);
+  const sections = order.map((key) => ({ title: key, body: asText(source[key]) }));
 
-  return sections.length > 0 ? sections : [{ title: "SOAP", body: asText(value) }];
+  const hasContent = sections.some((s) => s.body);
+  return hasContent ? sections : [{ title: "SOAP", body: asText(value) }];
 }
 
 function getPhysicianPrompts(response: ScribeResponse | null): PhysicianPrompt[] {
@@ -268,7 +297,18 @@ function highlightTerms(text: string, terms: string[]) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <span className="rounded-app bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500">{status}</span>;
+  return (
+    <span
+      key={status}
+      className={`rounded-app px-2 py-0.5 text-xs font-medium pixel-pop ${
+        status === "Ready"
+          ? "bg-emerald-50 text-emerald-600"
+          : "bg-zinc-100 text-zinc-500"
+      }`}
+    >
+      {status}
+    </span>
+  );
 }
 
 function SignalTrace() {
@@ -294,11 +334,14 @@ function nowLabel() {
 
 export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [activeTab, setActiveTab] = useState<RailTab>("scribes");
+  // Task 4: mobile panel state for single-column navigation
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>("main");
   const [workspaceScribes, setWorkspaceScribes] = useState(initialScribes);
   const [inputMode, setInputMode] = useState<InputMode>("manual");
   const [patientRecordNumber, setPatientRecordNumber] = useState("P023");
   const [dialectHint, setDialectHint] = useState("gulf");
-  const [manualTranscript, setManualTranscript] = useState(sampleTranscript);
+  // Task 1: empty initial transcript — no placeholder text
+  const [manualTranscript, setManualTranscript] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [result, setResult] = useState<ScribeResponse | null>(null);
   const [chatInput, setChatInput] = useState("");
@@ -317,6 +360,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [storageStatus, setStorageStatus] = useState("");
   const [actionNotice, setActionNotice] = useState("");
   const [lastRunId, setLastRunId] = useState<string | undefined>();
+  // Task 5: track which prompts have been answered and pending text inputs
+  const [promptAnswers, setPromptAnswers] = useState<Record<string, string>>({});
+  const [promptInputs, setPromptInputs] = useState<Record<string, string>>({});
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -451,6 +497,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         privacyMode: "prototype"
       });
       setResult(data);
+      // Reset prompt state when a new result comes in
+      setPromptAnswers({});
+      setPromptInputs({});
 
       const persistence = await saveScribeRun({
         patientRecordNumber,
@@ -506,8 +555,10 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     }
   }
 
+  // Task 5: track answered state, then delegate to API
   async function handlePromptAnswer(prompt: PhysicianPrompt, answer: { label?: string; value?: string; text?: string }) {
     const content = answer.label ?? answer.text ?? answer.value ?? "Answered";
+    setPromptAnswers((prev) => ({ ...prev, [prompt.id]: content }));
     addChatMessage({ role: "physician", content: `${prompt.question}\n${content}` });
 
     try {
@@ -583,7 +634,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       return (
         <div className="divide-y divide-zinc-100">
           {workspaceScribes.map((scribe) => (
-            <button key={scribe.patient} type="button" className="block w-full px-5 py-5 text-left hover:bg-zinc-50">
+            <button key={scribe.patient} type="button" className="block w-full px-5 py-5 text-left hover:bg-zinc-50 min-h-[60px]">
               <p className="text-[15px] font-medium text-zinc-950">{scribe.patient}</p>
               <p className="mt-1 text-[15px] leading-6 text-zinc-600">{scribe.summary}</p>
               <p className="mt-2 text-xs text-zinc-400">Pre-consultation report ready</p>
@@ -631,7 +682,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           <button
             key={scribe.id}
             type="button"
-            className={`block w-full px-5 py-5 text-left hover:bg-zinc-50 ${
+            className={`block w-full px-5 py-5 text-left hover:bg-zinc-50 min-h-[60px] ${
               scribe.id === encounterId ? "border-l-2 border-accent-500 bg-zinc-50" : "border-l-2 border-transparent"
             }`}
           >
@@ -649,9 +700,17 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     );
   }
 
+  // Task 4: scribe list aside is shown when mobilePanel === "list" on mobile, always on lg
+  const scribeListVisible = mobilePanel === "list";
+
   return (
-    <form onSubmit={handleSubmit} className="grid min-h-screen bg-white text-[15px] text-zinc-900 lg:grid-cols-[68px_320px_1fr]">
-      <aside className="flex border-r border-zinc-200 bg-white">
+    // Task 2 & 4: responsive grid — 1 col on mobile, 2 col on md, 3 col on lg
+    <form
+      onSubmit={handleSubmit}
+      className="grid min-h-dvh bg-white text-[15px] text-zinc-900 grid-cols-1 lg:grid-cols-[68px_320px_1fr]"
+    >
+      {/* Icon rail — hidden on mobile (bottom nav replaces it), visible lg+ */}
+      <aside className="hidden lg:flex border-r border-zinc-200 bg-white">
         <nav className="flex w-full flex-col items-center gap-3 px-2 py-5" aria-label="Primary">
           {railItems.map((item, index) => {
             const Icon = item.icon;
@@ -660,7 +719,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 key={item.key}
                 type="button"
                 onClick={() => setActiveTab(item.key)}
-                className={`rounded-app p-2.5 ${
+                className={`rounded-app p-3 min-h-[44px] min-w-[44px] flex items-center justify-center ${
                   activeTab === item.key ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"
                 } ${index === railItems.length - 1 ? "mt-auto" : ""}`}
                 aria-label={item.label}
@@ -673,7 +732,10 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         </nav>
       </aside>
 
-      <aside className="border-r border-zinc-200 bg-white">
+      {/* Scribe list — hidden on mobile unless mobilePanel === "list" */}
+      <aside
+        className={`border-r border-zinc-200 bg-white ${scribeListVisible ? "block" : "hidden"} lg:block`}
+      >
         <div className="border-b border-zinc-200 p-5">
           <div className="flex items-center justify-between gap-3">
             <h1 className="sajil-wordmark text-3xl text-zinc-950">SAJIL</h1>
@@ -684,6 +746,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 setResult(null);
                 setActionNotice("");
                 setStorageStatus("");
+                setPromptAnswers({});
+                setPromptInputs({});
                 setChatMessages([
                   {
                     id: "seed_assistant",
@@ -693,7 +757,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   }
                 ]);
               }}
-              className="inline-flex h-10 items-center rounded-app bg-accent-500 px-3.5 text-[15px] font-medium text-white hover:bg-accent-600"
+              className="inline-flex h-11 items-center rounded-app bg-accent-500 px-3.5 text-[15px] font-medium text-white hover:bg-accent-600"
             >
               New scribe
             </button>
@@ -706,20 +770,34 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         {renderSidePanel()}
       </aside>
 
-      <main className="grid min-h-screen min-w-0 grid-rows-[auto_1fr_auto] bg-white">
-        <section className="border-b border-zinc-200 px-6 py-4">
+      {/* Main content — hidden on mobile when showing the scribe list */}
+      <main
+        className={`flex flex-col min-h-dvh min-w-0 bg-white lg:grid lg:grid-rows-[auto_1fr_auto] ${
+          scribeListVisible ? "hidden lg:grid" : "flex"
+        }`}
+      >
+        {/* Task 4: Mobile-only top bar */}
+        <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 lg:hidden">
+          <h1 className="sajil-wordmark text-xl text-zinc-950">SAJIL</h1>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-zinc-500">{patientRecordNumber}</p>
+          </div>
+        </div>
+
+        {/* Patient context header */}
+        <section className="flex-shrink-0 border-b border-zinc-200 px-4 py-4 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-medium uppercase text-zinc-400">Patient Context</p>
-              <h2 className="mt-1 text-xl font-medium text-zinc-950">{patientRecordNumber} / {encounterId}</h2>
-              <p className="mt-1 text-sm text-zinc-500">Dialect: {dialectHint}. Status: {activeScribe.status}. {activeScribe.summary}</p>
+              <h2 className="mt-1 text-xl font-medium text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
+              <p className="mt-1 text-sm text-zinc-500 line-clamp-2">Dialect: {dialectHint}. Status: {activeScribe.status}.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <select
                 value={dialectHint}
                 onChange={(event) => setDialectHint(event.target.value)}
                 aria-label="Dialect"
-                className="h-10 rounded-app border border-zinc-200 bg-white px-3 outline-none focus:border-accent-500"
+                className="h-11 rounded-app border border-zinc-200 bg-white px-3 outline-none focus:border-accent-500"
               >
                 <option value="gulf">Gulf Arabic</option>
                 <option value="msa">MSA</option>
@@ -730,23 +808,31 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 value={patientRecordNumber}
                 onChange={(event) => setPatientRecordNumber(event.target.value)}
                 aria-label="Patient record number"
-                className="h-10 w-24 rounded-app border border-zinc-200 px-3 outline-none focus:border-accent-500"
+                className="h-11 w-24 rounded-app border border-zinc-200 px-3 outline-none focus:border-accent-500"
                 required
               />
             </div>
           </div>
         </section>
 
-        <section className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="min-h-0 overflow-y-auto border-r border-zinc-200 px-6 py-6">
+        {/* Task 2: inner content — transcript panel + copilot, responsive split */}
+        <section className="min-h-0 flex-1 grid overflow-hidden lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_380px]">
+          {/* Transcript + SOAP + physician review — hidden on mobile when copilot panel is active */}
+          <div
+            className={`min-h-0 overflow-y-auto border-r border-zinc-200 px-4 py-6 sm:px-6 ${
+              mobilePanel === "copilot" ? "hidden lg:block" : "block"
+            }`}
+          >
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-medium text-zinc-950">Main Clinical Document</h2>
                 <p className="text-sm text-zinc-500">Transcript, uncertainty, SOAP note, and physician review actions.</p>
               </div>
+              {/* Task 3: signal trace is always visible but more prominent when submitting */}
               <SignalTrace />
             </div>
 
+            {/* Transcript section */}
             <section className="border-b border-zinc-100 pb-6">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <h3 className="text-sm font-medium uppercase text-zinc-500">Transcript</h3>
@@ -754,7 +840,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   <button
                     type="button"
                     onClick={() => setInputMode("manual")}
-                    className={`rounded-app px-3 py-2 text-sm font-medium ${
+                    className={`rounded-app px-3 py-2.5 min-h-[44px] text-sm font-medium ${
                       inputMode === "manual" ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"
                     }`}
                   >
@@ -763,15 +849,16 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   <button
                     type="button"
                     onClick={isRecording ? stopRecording : startRecording}
-                    className={`inline-flex items-center gap-1.5 rounded-app px-3 py-2 text-sm font-medium ${
+                    className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-app px-3 py-2.5 text-sm font-medium ${
                       isRecording ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100"
                     }`}
                   >
                     {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                     {isRecording ? "Stop" : "Record"}
                   </button>
+                  {/* Task 7: expanded accept list for upload */}
                   <label
-                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-app px-3 py-2 text-sm font-medium ${
+                    className={`inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-app px-3 py-2.5 text-sm font-medium ${
                       inputMode === "upload" ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"
                     }`}
                   >
@@ -779,12 +866,22 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                     Upload
                     <input
                       type="file"
-                      accept="audio/*"
+                      accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/m4a,audio/x-m4a,audio/aac,audio/ogg,audio/webm,audio/flac,audio/mp4,video/mp4,.mp3,.wav,.m4a,.mp4,.aac,.ogg,.webm,.flac"
                       className="sr-only"
                       onChange={(event) => {
-                        setAudioFile(event.target.files?.[0] ?? null);
+                        const file = event.target.files?.[0] ?? null;
+                        if (file) {
+                          const validationError = validateAudioFile(file);
+                          if (validationError) {
+                            setError(validationError);
+                            event.target.value = "";
+                            return;
+                          }
+                        }
+                        setAudioFile(file);
                         setInputMode("upload");
                         setRecordingLabel("");
+                        setError("");
                       }}
                     />
                   </label>
@@ -792,21 +889,41 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               </div>
 
               {inputMode === "manual" ? (
-                <textarea
-                  value={manualTranscript}
-                  onChange={(event) => setManualTranscript(event.target.value)}
-                  dir="rtl"
-                  className="arabic-text min-h-52 w-full resize-none bg-transparent text-lg leading-9 text-zinc-950 outline-none placeholder:text-zinc-400"
-                  placeholder="اكتب نص الاستشارة هنا..."
-                  required
-                />
+                /* Task 1: empty placeholder, no default text */
+                <div>
+                  <textarea
+                    value={manualTranscript}
+                    onChange={(event) => setManualTranscript(event.target.value)}
+                    dir="rtl"
+                    className="arabic-text min-h-52 w-full resize-none bg-transparent text-lg leading-9 text-zinc-950 outline-none placeholder:text-zinc-400"
+                    placeholder="اكتب نص الاستشارة هنا..."
+                    required
+                  />
+                  {/* Task 1: empty state guidance when transcript is empty and no result */}
+                  {!manualTranscript && !result && (
+                    <p className="mt-2 text-sm text-zinc-400 text-center py-2">
+                      Type or paste the consultation transcript above, or switch to Record / Upload.
+                    </p>
+                  )}
+                </div>
               ) : (
                 <div className="bitmap-trace flex min-h-52 flex-col items-center justify-center text-center text-[15px] text-zinc-500">
-                  <div className={`mb-3 h-2.5 w-2.5 rounded-full ${isRecording ? "bg-accent-500" : "bg-zinc-300"}`} />
+                  {/* Task 3: pixel pulse animation on recording dot */}
+                  <div
+                    className={`mb-3 h-3 w-3 rounded-full transition-colors ${
+                      isRecording ? "bg-accent-500 recording-pulse" : "bg-zinc-300"
+                    }`}
+                  />
                   <p className="font-medium text-zinc-950">
                     {isRecording ? "Recording in progress" : audioFile ? "Audio ready" : "Record or upload audio"}
                   </p>
                   <p className="mt-1">{recordingLabel || "Generate when the consultation audio is ready."}</p>
+                  {/* Task 7: note about MP4 video extraction */}
+                  {audioFile && audioFile.type === "video/mp4" && (
+                    <p className="mt-3 max-w-xs text-xs text-amber-600">
+                      MP4 files contain video — the backend will extract audio for transcription.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -821,6 +938,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               ) : null}
             </section>
 
+            {/* SOAP note section */}
             <section className="border-b border-zinc-100 py-6">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h3 className="text-sm font-medium uppercase text-zinc-500">SOAP Note</h3>
@@ -831,7 +949,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   {soapSections.map((section) => (
                     <article key={section.title}>
                       <h4 className="text-xs font-medium uppercase text-zinc-500">{section.title}</h4>
-                      <p className="mt-2 whitespace-pre-wrap text-base leading-8 text-zinc-800">{section.body}</p>
+                      {/* Task 6: show "Not provided" instead of omitting empty sections */}
+                      {section.body ? (
+                        <p className="mt-2 whitespace-pre-wrap text-base leading-8 text-zinc-800">{section.body}</p>
+                      ) : (
+                        <p className="mt-2 text-base italic text-zinc-400">Not provided</p>
+                      )}
                     </article>
                   ))}
                 </div>
@@ -840,38 +963,102 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               )}
             </section>
 
+            {/* Physician review section */}
             <section className="py-6">
               <h3 className="text-sm font-medium uppercase text-zinc-500">Physician Review Actions</h3>
               {prompts.length > 0 ? (
+                // Task 5: interactive checkpoint UX with text input, resolved state, per-prompt answers
                 <div className="mt-4 space-y-5">
-                  {prompts.map((prompt) => (
-                    <article key={prompt.id} className="border-l-2 border-accent-500 pl-4">
-                      <p className="font-medium leading-6 text-zinc-950">{prompt.question}</p>
-                      {prompt.reason ? <p className="mt-1 text-sm leading-6 text-zinc-500">{prompt.reason}</p> : null}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {prompt.options.length > 0 ? (
-                          prompt.options.map((option) => (
-                            <button
-                              key={`${prompt.id}-${option.value}`}
-                              type="button"
-                              onClick={() => handlePromptAnswer(prompt, option)}
-                              className="rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
-                            >
-                              {option.label}
-                            </button>
-                          ))
+                  {prompts.map((prompt) => {
+                    const isAnswered = Boolean(promptAnswers[prompt.id]);
+                    return (
+                      <article
+                        key={prompt.id}
+                        className={`rounded-app border-l-2 pl-4 transition-opacity ${
+                          isAnswered ? "border-emerald-400 opacity-70" : "border-accent-500"
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          {isAnswered && (
+                            <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                          )}
+                          <p className="font-medium leading-6 text-zinc-950">{prompt.question}</p>
+                        </div>
+                        {isAnswered ? (
+                          <p className="mt-1 text-sm text-emerald-600">
+                            Answered: {promptAnswers[prompt.id]}
+                          </p>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => handlePromptAnswer(prompt, { text: "Needs physician clarification" })}
-                            className="rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
-                          >
-                            Mark for clarification
-                          </button>
+                          <>
+                            {prompt.reason ? (
+                              <p className="mt-1 text-sm leading-6 text-zinc-500">{prompt.reason}</p>
+                            ) : null}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {prompt.options.length > 0 ? (
+                                <>
+                                  {prompt.options.map((option) => (
+                                    <button
+                                      key={`${prompt.id}-${option.value}`}
+                                      type="button"
+                                      onClick={() => handlePromptAnswer(prompt, option)}
+                                      className="min-h-[44px] rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
+                                    >
+                                      {option.label}
+                                    </button>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePromptAnswer(prompt, { text: "Confirmed as documented" })}
+                                    className="min-h-[44px] rounded-app border border-zinc-100 px-3 py-2 text-sm font-medium text-zinc-400 hover:border-zinc-200 hover:text-zinc-600"
+                                  >
+                                    Confirm as-is
+                                  </button>
+                                </>
+                              ) : (
+                                // Task 5: free-text answer input when no predefined options
+                                <div className="flex w-full gap-2">
+                                  <input
+                                    value={promptInputs[prompt.id] ?? ""}
+                                    onChange={(event) =>
+                                      setPromptInputs((prev) => ({
+                                        ...prev,
+                                        [prompt.id]: event.target.value
+                                      }))
+                                    }
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" && !event.shiftKey) {
+                                        event.preventDefault();
+                                        const text = promptInputs[prompt.id]?.trim();
+                                        if (text) handlePromptAnswer(prompt, { text });
+                                      }
+                                    }}
+                                    className="min-h-[44px] flex-1 rounded-app border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-accent-500"
+                                    placeholder="Type your answer or correction…"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const text = promptInputs[prompt.id]?.trim();
+                                      if (text) handlePromptAnswer(prompt, { text });
+                                    }}
+                                    className="min-h-[44px] rounded-app border border-accent-200 bg-accent-50 px-4 text-sm font-medium text-accent-600 hover:bg-accent-100 disabled:opacity-40"
+                                    disabled={!promptInputs[prompt.id]?.trim()}
+                                  >
+                                    Submit
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </>
                         )}
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    );
+                  })}
+
+                  {/* Progress indicator */}
+                  <p className="text-xs text-zinc-400">
+                    {Object.keys(promptAnswers).length} of {prompts.length} resolved
+                  </p>
                 </div>
               ) : (
                 <p className="mt-3 text-sm text-zinc-400">Prompt questions will appear here after generation.</p>
@@ -885,7 +1072,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                       key={action.id}
                       type="button"
                       onClick={() => handleNoteAction(action)}
-                      className="inline-flex items-center gap-2 rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-app border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:border-accent-200 hover:text-accent-600"
                     >
                       {index === 0 ? <Brain className="h-4 w-4" /> : <Activity className="h-4 w-4" />}
                       {action.label}
@@ -897,7 +1084,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
             </section>
           </div>
 
-          <aside className="grid min-h-0 grid-rows-[auto_1fr_auto_auto] bg-white">
+          {/* Clinical Copilot panel — hidden on mobile unless mobilePanel === "copilot" */}
+          <aside
+            className={`min-h-0 grid-rows-[auto_1fr_auto_auto] bg-white ${
+              mobilePanel === "copilot" ? "grid" : "hidden lg:grid"
+            }`}
+          >
             <header className="border-b border-zinc-200 px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -933,7 +1125,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                           content: `${item.label} tool is scaffolded for future clinical support.`
                         });
                       }}
-                      className="rounded-app p-2 text-zinc-500 hover:bg-zinc-100 hover:text-accent-600"
+                      className="rounded-app p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-zinc-500 hover:bg-zinc-100 hover:text-accent-600"
                       title={item.label}
                       aria-label={item.label}
                     >
@@ -955,12 +1147,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 <input
                   value={chatInput}
                   onChange={(event) => setChatInput(event.target.value)}
-                  className="min-w-0 flex-1 rounded-app border border-zinc-200 px-3 py-2 outline-none focus:border-accent-500"
+                  className="min-h-[44px] min-w-0 flex-1 rounded-app border border-zinc-200 px-3 py-2 outline-none focus:border-accent-500"
                   placeholder="Ask Copilot..."
                 />
                 <button
                   type="submit"
-                  className="inline-flex items-center rounded-app bg-zinc-950 px-3 text-white hover:bg-accent-600"
+                  className="inline-flex min-h-[44px] items-center rounded-app bg-zinc-950 px-3 text-white hover:bg-accent-600"
                   aria-label="Send"
                 >
                   <Send className="h-4 w-4" />
@@ -970,12 +1162,13 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           </aside>
         </section>
 
-        <section className="border-t border-zinc-200 px-6 py-4">
+        {/* Footer: error/status + generate button */}
+        <section className="flex-shrink-0 border-t border-zinc-200 px-4 py-4 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-zinc-500">
               {error ? (
                 <span className="inline-flex items-center gap-2 text-red-600">
-                  <AlertCircle className="h-4 w-4" />
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
                   {error}
                 </span>
               ) : storageStatus ? (
@@ -984,16 +1177,53 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 "Ready"
               )}
             </div>
+            {/* Task 3: pixel shimmer animation while generating */}
             <button
               type="submit"
               disabled={isSubmitting || (inputMode !== "manual" && !audioFile)}
-              className="inline-flex h-10 items-center gap-2 rounded-app bg-accent-500 px-4 text-[15px] font-medium text-white hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className={`inline-flex h-11 items-center gap-2 rounded-app px-4 text-[15px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                isSubmitting ? "pixel-generating" : "bg-accent-500 hover:bg-accent-600"
+              }`}
             >
               {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-              Generate note
+              {isSubmitting ? "Generating…" : "Generate note"}
             </button>
           </div>
         </section>
+
+        {/* Task 4: Mobile bottom navigation — hidden on lg+ */}
+        <nav className="flex-shrink-0 flex items-stretch justify-around border-t border-zinc-200 bg-white lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobilePanel("list")}
+            className={`flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs font-medium ${
+              mobilePanel === "list" ? "text-accent-600" : "text-zinc-500"
+            }`}
+          >
+            <FileText className="h-5 w-5" />
+            Scribes
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePanel("main")}
+            className={`flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs font-medium ${
+              mobilePanel === "main" ? "text-accent-600" : "text-zinc-500"
+            }`}
+          >
+            <ClipboardList className="h-5 w-5" />
+            Note
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePanel("copilot")}
+            className={`flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs font-medium ${
+              mobilePanel === "copilot" ? "text-accent-600" : "text-zinc-500"
+            }`}
+          >
+            <MessageCircle className="h-5 w-5" />
+            Copilot
+          </button>
+        </nav>
       </main>
     </form>
   );
