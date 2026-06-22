@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   Activity,
@@ -31,6 +32,9 @@ import {
   type ScribeSourceMode
 } from "@/lib/api/scribe";
 import { sendPhysicianPromptGhost } from "@/lib/api/physician-prompts";
+import { createEncounter } from "@/lib/api/encounters";
+import { sendCopilotMessage } from "@/lib/api/copilot";
+import { routes } from "@/lib/constants/routes";
 import {
   listCopilotMessages,
   listEncounters,
@@ -374,6 +378,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [inputMode, setInputMode] = useState<InputMode>("manual");
   const [patientRecordNumber, setPatientRecordNumber] = useState("P023");
   const [dialectHint, setDialectHint] = useState("gulf");
+  const [noteFormat, setNoteFormat] = useState("SOAP");
+  const router = useRouter();
   // Task 1: empty initial transcript — no placeholder text
   const [manualTranscript, setManualTranscript] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -530,7 +536,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         audioFile,
         dialectHint,
         languageHint: "ar",
-        noteFormat: "SOAP",
+        noteFormat,
         privacyMode: "prototype"
       });
       setResult(data);
@@ -631,10 +637,24 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     if (!text) return;
     setChatInput("");
     addChatMessage({ role: "physician", content: text });
-    addChatMessage({
-      role: "assistant",
-      content: "Clinical Copilot tool execution is in skeleton mode. I captured this message for the consultation history."
-    });
+
+    try {
+      const history = chatMessages
+        .filter((m) => m.role === "physician" || m.role === "assistant")
+        .map((m) => ({ role: m.role as "physician" | "assistant", content: m.content }));
+      const res = await sendCopilotMessage({
+        encounter_id: encounterId,
+        message: text,
+        conversation_history: history,
+        soap_note_context: result?.soap_note ?? null
+      });
+      addChatMessage({ role: "assistant", content: res.response });
+    } catch (err) {
+      addChatMessage({
+        role: "assistant",
+        content: err instanceof Error ? `Copilot unavailable: ${err.message}` : "Copilot unavailable."
+      });
+    }
   }
 
   async function handleNoteAction(action: NoteAction) {
@@ -772,21 +792,26 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
             <h1 className="sajil-wordmark text-3xl text-zinc-950">SAJIL</h1>
             <button
               type="button"
-              onClick={() => {
-                setManualTranscript("");
-                setResult(null);
-                setActionNotice("");
-                setStorageStatus("");
-                setPromptAnswers({});
-                setPromptInputs({});
-                setChatMessages([
-                  {
-                    id: "seed_assistant",
-                    role: "assistant",
-                    content: "Ready for a new consultation.",
-                    createdAt: nowLabel()
-                  }
-                ]);
+              onClick={async () => {
+                try {
+                  const { encounter_id } = await createEncounter(patientRecordNumber);
+                  router.push(routes.consultation(encounter_id));
+                } catch {
+                  setManualTranscript("");
+                  setResult(null);
+                  setActionNotice("");
+                  setStorageStatus("");
+                  setPromptAnswers({});
+                  setPromptInputs({});
+                  setChatMessages([
+                    {
+                      id: "seed_assistant",
+                      role: "assistant",
+                      content: "Ready for a new consultation.",
+                      createdAt: nowLabel()
+                    }
+                  ]);
+                }
               }}
               className="inline-flex h-9 w-9 items-center justify-center rounded-app border border-zinc-200 text-zinc-700 hover:border-zinc-950 hover:text-zinc-950"
               aria-label="New note"
@@ -825,6 +850,16 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               <h2 className="mt-1 text-xl font-medium text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={noteFormat}
+                onChange={(event) => setNoteFormat(event.target.value)}
+                aria-label="Note format"
+                className="h-11 rounded-app border border-zinc-200 bg-white px-3 outline-none focus:border-accent-500"
+              >
+                <option value="SOAP">SOAP</option>
+                <option value="focused_soap">Focused SOAP</option>
+                <option value="arabic_english_hybrid">Arabic-English</option>
+              </select>
               <select
                 value={dialectHint}
                 onChange={(event) => setDialectHint(event.target.value)}

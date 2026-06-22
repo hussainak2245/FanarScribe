@@ -4,7 +4,15 @@ import { SignalDot } from "@/components/shared/SignalDot";
 import { DoctorGreeting } from "./DoctorGreeting";
 import { PatientSearch } from "./PatientSearch";
 
-export function DashboardHero({ appointmentCount }: { appointmentCount: number }) {
+export function DashboardHero({
+  appointmentCount,
+  signals = 0,
+  notesReady = 0
+}: {
+  appointmentCount: number;
+  signals?: number;
+  notesReady?: number;
+}) {
   return (
     <SoftPanel className="overflow-hidden p-5 sm:p-7" tone="cloud">
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
@@ -25,12 +33,12 @@ export function DashboardHero({ appointmentCount }: { appointmentCount: number }
             </div>
             <div className="rounded-app bg-zinc-50 p-3">
               <Sparkles className="h-5 w-5 text-accent-500" aria-hidden="true" />
-              <p className="mt-4 text-2xl font-medium text-zinc-950">7</p>
+              <p className="mt-4 text-2xl font-medium text-zinc-950">{signals}</p>
               <p className="text-xs font-medium text-zinc-500">Signals</p>
             </div>
             <div className="rounded-app bg-zinc-50 p-3">
               <Mic2 className="h-5 w-5 text-accent-500" aria-hidden="true" />
-              <p className="mt-4 text-2xl font-medium text-zinc-950">3</p>
+              <p className="mt-4 text-2xl font-medium text-zinc-950">{notesReady}</p>
               <p className="text-xs font-medium text-zinc-500">Ready</p>
             </div>
           </div>
