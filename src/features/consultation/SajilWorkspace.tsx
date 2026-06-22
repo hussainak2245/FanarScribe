@@ -2,12 +2,14 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AlertCircle,
   Activity,
   BookOpen,
   Brain,
   Check,
+  ChevronRight,
   CircleHelp,
   ClipboardList,
   FileText,
@@ -734,6 +736,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           <button
             key={scribe.id}
             type="button"
+            onClick={() => router.push(routes.consultation(scribe.id))}
             className={`block w-full px-5 py-5 text-left hover:bg-zinc-50 min-h-[60px] ${
               scribe.id === encounterId ? "border-l-2 border-accent-500 bg-zinc-50" : "border-l-2 border-transparent"
             }`}
@@ -1055,6 +1058,17 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 <p className="border-y border-zinc-200 py-8 text-center text-base text-zinc-400">
                   Generate a SOAP note from the transcript.
                 </p>
+              )}
+              {result && soapSections.length > 0 && (
+                <div className="mt-4 flex justify-end">
+                  <Link
+                    href={routes.finalReview(encounterId)}
+                    className="inline-flex h-11 items-center gap-2 rounded-app bg-zinc-950 px-4 text-sm font-medium text-white hover:bg-accent-600"
+                  >
+                    Open Final Review
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                </div>
               )}
             </section>
 
