@@ -66,6 +66,7 @@ export async function saveScribeRun(input: SaveScribeRunInput) {
       audio: toJson(input.response.audio),
       speaker_context: toJson(input.response.speaker_context),
       request_id: input.response.request_id ?? null,
+      pipeline: toJson(input.response.pipeline ?? {}),
       raw_response: toJson(input.response),
       frontend_hints: toJson(input.response.frontend_hints),
       status: "completed"
@@ -128,10 +129,52 @@ export async function listEncounters() {
   const { data, error } = await supabase
     .from("sajil_encounters")
     .select("id, patient_record_number, status, summary, consultation_time")
+    .is("deleted_at", null)
     .order("consultation_time", { ascending: false })
-    .limit(20);
+    .limit(30);
 
   return { data, error: error?.message };
+}
+
+export async function deleteEncounter(encounterId: string) {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { error: "Supabase is not configured" };
+
+  const { error } = await supabase
+    .from("sajil_encounters")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", encounterId);
+
+  return { error: error?.message };
+}
+
+export type PublicDemoRunInput = {
+  sessionId: string;
+  transcript: string;
+  dialect: string;
+  soapNote: unknown;
+  uncertainWords: unknown;
+  pipeline: unknown;
+  provider?: string;
+  requestId?: string;
+};
+
+export async function savePublicDemoRun(input: PublicDemoRunInput) {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { error: "Supabase is not configured" };
+
+  const { error } = await supabase.from("public_demo_runs").insert({
+    session_id: input.sessionId,
+    transcript: input.transcript,
+    dialect: input.dialect,
+    soap_note: toJson(input.soapNote),
+    uncertain_words: toJson(input.uncertainWords),
+    pipeline: toJson(input.pipeline),
+    provider: input.provider ?? null,
+    request_id: input.requestId ?? null,
+  });
+
+  return { error: error?.message };
 }
 
 export async function saveGhostPromptJob({

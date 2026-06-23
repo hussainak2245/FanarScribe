@@ -54,6 +54,7 @@ export type ScribeResponse = {
   privacy?: unknown;
   frontend_hints?: unknown;
   providers_used?: unknown;
+  pipeline?: Record<string, unknown>;
 };
 
 export type PromptResponse = {

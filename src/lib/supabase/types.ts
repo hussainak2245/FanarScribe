@@ -9,6 +9,7 @@ export type SajilEncounterRow = {
   status: "draft" | "processing" | "review" | "saved" | "finalized";
   summary: string | null;
   consultation_time: string;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -35,6 +36,7 @@ export type SajilScribeRunRow = {
   audio: Json | null;
   speaker_context: Json | null;
   request_id: string | null;
+  pipeline: Json | null;
   raw_response: Json | null;
   frontend_hints: Json | null;
   status: "queued" | "processing" | "completed" | "failed";
@@ -60,6 +62,19 @@ export type SajilNoteActionRow = {
   label: string;
   status: "under_development" | "queued" | "completed" | "failed";
   result: Json | null;
+  created_at: string;
+};
+
+export type PublicDemoRunRow = {
+  id: string;
+  session_id: string;
+  transcript: string | null;
+  dialect: string | null;
+  soap_note: Json | null;
+  uncertain_words: Json | null;
+  pipeline: Json | null;
+  provider: string | null;
+  request_id: string | null;
   created_at: string;
 };
 
@@ -104,6 +119,12 @@ export type Database = {
         Row: SajilCopilotMessageRow;
         Insert: Partial<SajilCopilotMessageRow> & Pick<SajilCopilotMessageRow, "encounter_id" | "role" | "content">;
         Update: Partial<SajilCopilotMessageRow>;
+        Relationships: [];
+      };
+      public_demo_runs: {
+        Row: PublicDemoRunRow;
+        Insert: Partial<PublicDemoRunRow> & Pick<PublicDemoRunRow, "session_id">;
+        Update: Partial<PublicDemoRunRow>;
         Relationships: [];
       };
     };
