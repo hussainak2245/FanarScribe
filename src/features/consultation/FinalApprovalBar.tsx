@@ -4,17 +4,18 @@ import { useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Download, FileText, Loader2, Save } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { routes } from "@/lib/constants/routes";
 import { approveNote } from "@/lib/api/notes-api";
 
 export function FinalApprovalBar({
   encounterId,
-  readiness,
+  resolvedCount = 0,
+  totalCount = 0,
   runId
 }: {
   encounterId: string;
-  readiness: number;
+  resolvedCount?: number;
+  totalCount?: number;
   runId?: string;
 }) {
   const [saving, setSaving] = useState(false);
@@ -47,12 +48,11 @@ export function FinalApprovalBar({
             <CheckCircle2 className="h-5 w-5 text-accent-500" aria-hidden="true" />
             <h2 className="text-lg font-medium text-zinc-950">Final readiness</h2>
           </div>
-          <div className="mt-3 max-w-xl">
-            <Progress value={readiness * 100} />
-          </div>
           <p className="mt-2 text-sm font-medium text-zinc-500">
-            {Math.round(readiness * 100)}% ready for physician approval
-            {notice && <span className="ml-3 text-teal-600">{notice}</span>}
+            {totalCount > 0
+              ? `${resolvedCount} of ${totalCount} checkpoints resolved`
+              : "No checkpoints yet"}
+            {notice && <span className="ml-3 text-accent-500">{notice}</span>}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

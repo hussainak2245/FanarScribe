@@ -394,7 +394,7 @@ function PipelineProgress({ steps }: { steps: PipelineAnimStep[] }) {
                   <div
                     className={`h-full rounded-full transition-all duration-700 ${
                       step.status === "done" ? "w-full bg-emerald-400"
-                      : step.status === "running" ? "w-1/2 bg-accent-400 animate-pulse"
+                      : step.status === "running" ? "pipeline-bar-running bg-accent-400"
                       : "w-0"
                     }`}
                   />
@@ -519,6 +519,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const pipelineTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   const transcriptionText = asText(result?.transcription);
   const translationText = asText(result?.translation);
@@ -544,6 +545,11 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     loadChat();
     return () => { isMounted = false; };
   }, [encounterId]);
+
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [chatMessages]);
 
   function startPipelineAnimation() {
     const initial = PIPELINE_STEP_DEFS.map((d) => ({ ...d, status: "pending" as const }));
@@ -733,7 +739,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   ];
 
   return (
-    <div className="grid min-h-dvh bg-white text-[15px] text-zinc-900 grid-cols-1 lg:grid-cols-[68px_1fr]">
+    <div className="grid h-[calc(100dvh-56px)] overflow-hidden bg-white text-[15px] text-zinc-900 grid-cols-1 lg:grid-cols-[68px_1fr]">
 
       {/* Icon rail */}
       <aside className="hidden lg:flex border-r border-zinc-200 bg-white">
@@ -782,13 +788,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       </aside>
 
       {/* Main content */}
-      <main className="flex flex-col min-h-dvh min-w-0 bg-white lg:grid lg:grid-rows-[auto_1fr_auto]">
-
-        {/* Mobile top bar */}
-        <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 lg:hidden">
-          <h1 className="sajil-wordmark text-xl text-zinc-950">SAJIL</h1>
-          <p className="text-xs text-zinc-500">{patientRecordNumber}</p>
-        </div>
+      <main className="flex flex-col h-full min-w-0 bg-white overflow-hidden lg:grid lg:grid-rows-[auto_1fr_auto]">
 
         {/* Patient context header */}
         <section className="flex-shrink-0 border-b border-zinc-200 px-4 py-4 sm:px-6">
@@ -895,7 +895,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 <button
                   type="submit"
                   disabled={isSubmitting || (inputMode === "manual" && !manualTranscript.trim()) || (inputMode !== "manual" && !audioFile)}
-                  className={`inline-flex h-11 items-center gap-2 rounded-app px-4 text-[15px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${isSubmitting ? "pixel-generating bg-zinc-800" : "bg-zinc-950 hover:bg-accent-600"}`}
+                  className={`inline-flex h-11 items-center gap-2 rounded-app px-4 text-[15px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${isSubmitting ? "pixel-generating bg-accent-500" : "bg-accent-500 hover:bg-accent-600"}`}
                 >
                   {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                   {isSubmitting ? "Generating…" : "Generate note"}
@@ -1140,7 +1140,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           {/* Messages — independent scroller that fills remaining height */}
           <section className="flex-1 min-h-0 flex flex-col border-t border-zinc-100">
             <p className="flex-shrink-0 px-5 pt-4 pb-2 text-xs font-medium uppercase text-zinc-400">Messages</p>
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-4 space-y-4">
+            <div ref={chatScrollRef} className="messages-scroller flex-1 min-h-0 overflow-y-auto px-5 pb-4 space-y-4">
               {chatMessages.map((message) => (
                 <article key={message.id} className={message.role === "physician" ? "text-right" : ""}>
                   <p className="text-xs font-medium uppercase text-zinc-400">
