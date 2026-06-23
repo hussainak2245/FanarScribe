@@ -29,7 +29,6 @@ export function AppointmentStrip({ appointment }: { appointment: Appointment }) 
         ))}
         <Link
           href={routes.patientIntake(appointment.id)}
-          onClick={(e) => e.stopPropagation()}
           className="inline-flex h-9 items-center gap-1.5 rounded-app border border-zinc-200 px-3 text-xs font-medium text-zinc-600 hover:border-zinc-950 hover:text-zinc-950"
         >
           <FileText className="h-3.5 w-3.5" aria-hidden="true" />
