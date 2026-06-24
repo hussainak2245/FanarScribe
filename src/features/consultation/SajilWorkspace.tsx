@@ -336,15 +336,14 @@ function RiskChip({ risk }: { risk?: RiskLevel }) {
   );
 }
 
-/** Highlight uncertain terms in transcript with risk-coloured spans */
+const UNCERTAIN_HIGHLIGHT: React.CSSProperties = {
+  backgroundColor: "#FFE0B2",
+  color: "#E65100",
+};
+
+/** Highlight uncertain terms in transcript */
 function HighlightedTranscript({ text, words }: { text: string; words: UncertainWord[] }) {
   if (!text || words.length === 0) return <span className="whitespace-pre-wrap">{text}</span>;
-
-  const riskColour: Record<RiskLevel, string> = {
-    critical: "rounded-app bg-red-100 px-1 text-red-900 ring-1 ring-red-300 cursor-help",
-    high: "rounded-app bg-amber-100 px-1 text-zinc-950 ring-1 ring-amber-300 cursor-help",
-    medium: "rounded-app bg-zinc-100 px-1 text-zinc-600 cursor-help"
-  };
 
   const wordByText = new Map<string, UncertainWord>();
   words.forEach((w) => wordByText.set(w.text.toLowerCase(), w));
@@ -363,11 +362,14 @@ function HighlightedTranscript({ text, words }: { text: string; words: Uncertain
       {parts.map((part, i) => {
         const word = wordByText.get(part.toLowerCase());
         if (!word) return part;
-        const cls = riskColour[word.risk ?? "medium"];
         const title = word.possible_meanings?.length
           ? `Possible: ${word.possible_meanings.join(" · ")}`
           : word.reason ?? "";
-        return <span key={i} className={cls} title={title}>{part}</span>;
+        return (
+          <span key={i} className="rounded-app px-1 cursor-help" style={UNCERTAIN_HIGHLIGHT} title={title}>
+            {part}
+          </span>
+        );
       })}
     </span>
   );
@@ -557,6 +559,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const pipelineTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const physicianReviewRef = useRef<HTMLElement>(null);
 
   const transcriptionText = asText(result?.transcription);
   const translationText = asText(result?.translation);
@@ -737,6 +740,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     const content = answer.label ?? answer.text ?? answer.value ?? "Answered";
     setPromptAnswers((prev) => ({ ...prev, [prompt.id]: content }));
     addChatMessage({ role: "physician", content: `${prompt.question}\n${content}` });
+    requestAnimationFrame(() => {
+      physicianReviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     try {
       const response: PromptResponse = await respondToPhysicianPrompt({
         requestId: result?.request_id ?? "local_request",
@@ -1161,10 +1167,13 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                       <h4 className="text-xs font-semibold uppercase text-zinc-950">
                         {section.title.charAt(0).toUpperCase() + section.title.slice(1)}
                       </h4>
-                      {section.body
-                        ? <p className="mt-2 whitespace-pre-wrap text-base leading-8 text-zinc-900">{section.body}</p>
-                        : <p className="mt-2 text-base italic text-zinc-400">Not provided</p>
-                      }
+                      {section.body ? (
+                        <p className="mt-2 text-base leading-8 text-zinc-900">
+                          <HighlightedTranscript text={section.body} words={uncertainWords} />
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-base italic text-zinc-400">Not provided</p>
+                      )}
                     </article>
                   ))}
                 </div>
@@ -1247,7 +1256,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 )}
 
                 {/* Physician prompts */}
-                <section>
+                <section ref={physicianReviewRef}>
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <p className="text-xs font-medium uppercase text-zinc-400">Physician review</p>
                     {reviewPrompts.length > 0 && (

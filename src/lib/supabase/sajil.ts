@@ -205,6 +205,34 @@ export async function saveGhostPromptJob({
   return { error: error?.message };
 }
 
+export async function getLatestScribeRun(encounterId: string) {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { data: null, error: "Supabase is not configured" };
+
+  const { data, error } = await supabase
+    .from("sajil_scribe_runs")
+    .select("id, soap_note, transcription, translation, uncertain_words, encounter_id, created_at, source_mode")
+    .eq("encounter_id", encounterId)
+    .eq("status", "completed")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  return { data, error: error?.message };
+}
+
+export async function updateScribeRunSoapNote(runId: string, soapNote: unknown) {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return { error: "Supabase is not configured" };
+
+  const { error } = await supabase
+    .from("sajil_scribe_runs")
+    .update({ soap_note: toJson(soapNote) })
+    .eq("id", runId);
+
+  return { error: error?.message };
+}
+
 export async function saveNoteAction({
   encounterId,
   runId,
