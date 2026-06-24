@@ -18,7 +18,6 @@ import {
   MessageCircle,
   Mic,
   Paperclip,
-  Plus,
   ScrollText,
   Settings,
   ShieldAlert,
@@ -744,29 +743,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       {/* Icon rail */}
       <aside className="hidden lg:flex border-r border-zinc-200 bg-white">
         <nav className="flex w-full flex-col items-center gap-3 px-2 py-5" aria-label="Primary">
-          {/* New encounter button at top of rail */}
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const { encounter_id } = await createEncounter(patientRecordNumber);
-                router.push(routes.consultation(encounter_id));
-              } catch {
-                setManualTranscript("");
-                setResult(null);
-                setStorageStatus("");
-                setPipelineSteps([]);
-                setPromptAnswers({});
-                setPromptInputs({});
-                setChatMessages([{ id: "seed_assistant", role: "assistant", content: "Ready for a new consultation.", createdAt: nowLabel() }]);
-              }
-            }}
-            className="rounded-app p-3 min-h-[44px] min-w-[44px] flex items-center justify-center text-zinc-500 hover:bg-zinc-100 hover:text-accent-600"
-            aria-label="New note"
-            title="New note"
-          >
-            <Plus className="h-5 w-5" />
-          </button>
           {railItems.map((item, index) => {
             const Icon = item.icon;
             return (
@@ -916,13 +892,26 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   {uncertainWords.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {uncertainWords.map((w) => (
-                        <span key={w.id ?? w.text} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                          w.risk === "critical" ? "bg-red-100 text-red-700"
-                          : w.risk === "high" ? "bg-amber-100 text-amber-700"
-                          : "bg-zinc-100 text-zinc-500"
-                        }`} title={w.possible_meanings?.join(" · ")}>
-                          <span dir="rtl">{w.text}</span>
-                          {w.risk && <RiskChip risk={w.risk} />}
+                        <span key={w.id ?? w.text} className="relative group/chip">
+                          <span className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                            w.risk === "critical" ? "bg-red-100 text-red-700"
+                            : w.risk === "high" ? "bg-amber-100 text-amber-700"
+                            : "bg-zinc-100 text-zinc-500"
+                          }`}>
+                            <span dir="rtl">{w.text}</span>
+                            {w.risk && <RiskChip risk={w.risk} />}
+                          </span>
+                          {/* Hover card */}
+                          <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-zinc-200 bg-white p-3 shadow-lg opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100">
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <span className="font-bold text-zinc-950 text-sm" dir="rtl">{w.text}</span>
+                              {w.risk && <RiskChip risk={w.risk} />}
+                            </div>
+                            {w.possible_meanings && w.possible_meanings.length > 0 && (
+                              <p className="text-xs leading-5 text-zinc-600">{w.possible_meanings.join(" · ")}</p>
+                            )}
+                            {w.reason && <p className="mt-1 text-xs leading-5 text-zinc-400">{w.reason}</p>}
+                          </div>
                         </span>
                       ))}
                     </div>
@@ -990,49 +979,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               </div>
             </header>
 
-            {/* Upper sections — naturally sized, scroll if needed */}
-            <div className="flex-shrink-0 overflow-y-auto px-5 pt-5 pb-2">
-              <div className="space-y-6">
-
-                {/* AI status */}
-                <section className="border-l-2 border-zinc-950 pl-4">
-                  <p className="text-xs font-medium uppercase text-zinc-400">AI status</p>
-                  <p className="mt-1 text-sm leading-6 text-zinc-800">
-                    {result
-                      ? "I drafted the note and will ask one review question at a time. The final note still needs physician review."
-                      : "Generate a note from the transcript, then I will guide the review here."}
-                  </p>
-                </section>
-
-                {/* Uncertainty panel — shown after result */}
-                {uncertainWords.length > 0 && (
-                  <section>
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-xs font-medium uppercase text-zinc-400">Flagged terms</p>
-                      <span className="text-xs text-zinc-400">{uncertainWords.length} term{uncertainWords.length !== 1 ? "s" : ""}</span>
-                    </div>
-                    <div className="space-y-2">
-                      {uncertainWords.map((w) => (
-                        <div key={w.id ?? w.text} className={`rounded-lg border p-3 ${
-                          w.risk === "critical" ? "border-red-200 bg-red-50"
-                          : w.risk === "high" ? "border-amber-200 bg-amber-50"
-                          : "border-zinc-200 bg-zinc-50"
-                        }`}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-zinc-950" dir="rtl">{w.text}</span>
-                            <RiskChip risk={w.risk} />
-                          </div>
-                          {w.possible_meanings && w.possible_meanings.length > 0 && (
-                            <p className="mt-1 text-xs text-zinc-600">
-                              {w.possible_meanings.join(" · ")}
-                            </p>
-                          )}
-                          {w.reason && <p className="mt-0.5 text-xs text-zinc-400">{w.reason}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
+            {/* Single scrollable body — physician review + messages */}
+            <div ref={chatScrollRef} className="messages-scroller flex-1 min-h-0 overflow-y-auto px-5 pt-5 pb-4 space-y-6">
 
                 {/* Physician prompts */}
                 <section>
@@ -1134,14 +1082,11 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   )}
                 </section>
 
-              </div>
-            </div>
-
-          {/* Messages — independent scroller that fills remaining height */}
-          <section className="flex-1 min-h-0 flex flex-col border-t border-zinc-100">
-            <p className="flex-shrink-0 px-5 pt-4 pb-2 text-xs font-medium uppercase text-zinc-400">Messages</p>
-            <div ref={chatScrollRef} className="messages-scroller flex-1 min-h-0 overflow-y-auto px-5 pb-4 space-y-4">
-              {chatMessages.map((message) => (
+                {/* Messages */}
+                <section className="border-t border-zinc-100 pt-5">
+                  <p className="mb-3 text-xs font-medium uppercase text-zinc-400">Messages</p>
+                  <div className="space-y-4">
+                  {chatMessages.map((message) => (
                 <article key={message.id} className={message.role === "physician" ? "text-right" : ""}>
                   <p className="text-xs font-medium uppercase text-zinc-400">
                     {message.role} · {message.createdAt}
@@ -1172,6 +1117,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               ))}
             </div>
           </section>
+            </div>
 
           {/* Tool quick-access bar */}
           <div className="flex-shrink-0 border-t border-zinc-100 px-5 py-3">
