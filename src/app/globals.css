@@ -204,6 +204,36 @@ select {
   animation: pixel-shimmer 1.4s linear infinite;
 }
 
+/* Indeterminate loading bar for pipeline steps in "running" state */
+@keyframes pipeline-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+.pipeline-bar-running {
+  width: 25%;
+  animation: pipeline-sweep 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Thin minimal scrollbar for the copilot messages area */
+.messages-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: #e4e4e7 transparent;
+}
+
+.messages-scroller::-webkit-scrollbar {
+  width: 4px;
+}
+
+.messages-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messages-scroller::-webkit-scrollbar-thumb {
+  background-color: #e4e4e7;
+  border-radius: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

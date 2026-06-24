@@ -5,11 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   AlertCircle,
-  Activity,
   AlertTriangle,
-  ArrowRight,
   BookOpen,
-  Brain,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -21,9 +18,7 @@ import {
   MessageCircle,
   Mic,
   Paperclip,
-  Plus,
   ScrollText,
-  Send,
   Settings,
   ShieldAlert,
   Square,
@@ -34,7 +29,6 @@ import {
 import {
   processScribe,
   respondToPhysicianPrompt,
-  runNoteAction,
   type PromptResponse,
   type ScribeResponse,
   type ScribeSourceMode
@@ -45,10 +39,8 @@ import { sendCopilotMessage, type CopilotToolCallResult } from "@/lib/api/copilo
 import { routes } from "@/lib/constants/routes";
 import {
   listCopilotMessages,
-  listEncounters,
   saveCopilotMessage,
   saveGhostPromptJob,
-  saveNoteAction,
   saveScribeRun
 } from "@/lib/supabase/sajil";
 import { toJson } from "@/lib/supabase/types";
@@ -130,12 +122,6 @@ const SUPPORTED_AUDIO_TYPES = new Set([
 ]);
 const MAX_AUDIO_FILE_SIZE = 200 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = ["mp3", "wav", "m4a", "mp4", "aac", "ogg", "webm", "flac"];
-
-const initialScribes: WorkspaceScribe[] = [
-  { id: "E001", time: "Today, 10:02 AM", patient: "P023", summary: "Shortness of breath since yesterday, sleep affected.", status: "Draft" },
-  { id: "E002", time: "Today, 9:18 AM", patient: "P041", summary: "Follow-up for blood pressure and medication review.", status: "Ready" },
-  { id: "E003", time: "Yesterday, 4:40 PM", patient: "P052", summary: "Right ankle sprain, pain control and imaging plan.", status: "Draft" }
-];
 
 const toolItems = [
   { label: "Transcript", icon: ScrollText },
@@ -278,28 +264,6 @@ function getDefaultReviewPrompts(): PhysicianPrompt[] {
   ];
 }
 
-function getNoteActions(response: ScribeResponse | null): NoteAction[] {
-  const actions = getArray(response?.note_actions)
-    .map((item, index) => {
-      if (typeof item === "string") return { id: item, label: item };
-      if (!item || typeof item !== "object") return null;
-      const record = item as Record<string, unknown>;
-      return {
-        id: asText(record.id ?? record.action_id ?? record.key) || `action_${index}`,
-        label: asText(record.label ?? record.title ?? record.name) || `Action ${index + 1}`,
-        description: asText(record.description ?? record.reason)
-      };
-    })
-    .filter((item): item is NoteAction => Boolean(item?.label))
-    .slice(0, 3);
-
-  if (actions.length > 0) return actions;
-  return [
-    { id: "illness_prediction", label: "Illness prediction", description: "Recommended" },
-    { id: "risk_triage", label: "Risk triage", description: "Recommended" }
-  ];
-}
-
 function nowLabel() {
   return new Date().toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
@@ -431,7 +395,7 @@ function PipelineProgress({ steps }: { steps: PipelineAnimStep[] }) {
                   <div
                     className={`h-full rounded-full transition-all duration-700 ${
                       step.status === "done" ? "w-full bg-emerald-400"
-                      : step.status === "running" ? "w-1/2 bg-accent-400 animate-pulse"
+                      : step.status === "running" ? "pipeline-bar-running bg-accent-400"
                       : "w-0"
                     }`}
                   />
@@ -526,16 +490,14 @@ function ToolCallCard({ tc }: { tc: CopilotToolCallResult }) {
 export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [activeTab, setActiveTab] = useState<RailTab>("scribes");
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("main");
-  const [workspaceScribes, setWorkspaceScribes] = useState(initialScribes);
   const [inputMode, setInputMode] = useState<InputMode>("manual");
-  const [patientRecordNumber, setPatientRecordNumber] = useState("P023");
-  const [dialectHint, setDialectHint] = useState("gulf");
+  const [patientRecordNumber] = useState("P023");
+  const [dialectHint] = useState("gulf");
   const [noteFormat, setNoteFormat] = useState("SOAP");
   const router = useRouter();
   const [manualTranscript, setManualTranscript] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [result, setResult] = useState<ScribeResponse | null>(null);
-  const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: "seed_assistant",
@@ -549,7 +511,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingLabel, setRecordingLabel] = useState("");
   const [storageStatus, setStorageStatus] = useState("");
-  const [actionNotice, setActionNotice] = useState("");
   const [lastRunId, setLastRunId] = useState<string | undefined>();
   const [promptAnswers, setPromptAnswers] = useState<Record<string, string>>({});
   const [promptInputs, setPromptInputs] = useState<Record<string, string>>({});
@@ -560,6 +521,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const chunksRef = useRef<Blob[]>([]);
   const pipelineTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const physicianReviewRef = useRef<HTMLElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   const transcriptionText = asText(result?.transcription);
   const translationText = asText(result?.translation);
@@ -567,24 +529,11 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const uncertainWords = useMemo(() => getUncertainWords(result), [result]);
   const prompts = useMemo(() => getPhysicianPrompts(result), [result]);
   const reviewPrompts = useMemo(() => (result && prompts.length === 0 ? getDefaultReviewPrompts() : prompts), [prompts, result]);
-  const noteActions = useMemo(() => getNoteActions(result), [result]);
-  const activeScribe = workspaceScribes.find((s) => s.id === encounterId) ?? workspaceScribes[0];
   const answeredPromptCount = reviewPrompts.filter((p) => promptAnswers[p.id]).length;
   const currentPrompt = reviewPrompts.find((p) => !promptAnswers[p.id]);
 
   useEffect(() => {
     let isMounted = true;
-    async function loadEncounters() {
-      const { data } = await listEncounters();
-      if (!isMounted || !data || data.length === 0) return;
-      setWorkspaceScribes(data.map((e) => ({
-        id: e.id,
-        time: new Date(e.consultation_time).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
-        patient: e.patient_record_number,
-        summary: e.summary ?? "Saved consultation",
-        status: e.status === "review" ? "Ready" : "Draft"
-      })));
-    }
     async function loadChat() {
       const { data } = await listCopilotMessages(encounterId);
       if (!isMounted || !data || data.length === 0) return;
@@ -595,10 +544,14 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         createdAt: new Date(m.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
       })));
     }
-    loadEncounters();
     loadChat();
     return () => { isMounted = false; };
   }, [encounterId]);
+
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [chatMessages]);
 
   function startPipelineAnimation() {
     const initial = PIPELINE_STEP_DEFS.map((d) => ({ ...d, status: "pending" as const }));
@@ -685,7 +638,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     setError("");
     setIsSubmitting(true);
     setStorageStatus("");
-    setActionNotice("");
     setPipelineSteps([]);
     startPipelineAnimation();
 
@@ -710,12 +662,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       });
       setLastRunId(persistence.runId);
       setStorageStatus(persistence.error ? `Local result ready. Supabase: ${persistence.error}` : "Saved to Supabase.");
-
-      const summaryText = manualTranscript || asText(data.transcription) || "Audio consultation processed.";
-      setWorkspaceScribes((current) => [
-        { id: encounterId, time: nowLabel(), patient: patientRecordNumber, summary: summaryText.slice(0, 160), status: "Ready" },
-        ...current.filter((s) => s.id !== encounterId)
-      ]);
 
       const promptPayload = { encounterId, patientRecordNumber, physicianQuestions: data.physician_questions, uncertainty: data.uncertainty, scribeResponse: data };
       const ghostResponse = await sendPhysicianPromptGhost(promptPayload);
@@ -765,56 +711,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     }
   }
 
-  async function handleChatSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = chatInput.trim();
-    if (!text) return;
-    setChatInput("");
-    addChatMessage({ role: "physician", content: text });
-    try {
-      const history = chatMessages
-        .filter((m) => m.role === "physician" || m.role === "assistant")
-        .map((m) => ({ role: m.role as "physician" | "assistant", content: m.content }));
-      const res = await sendCopilotMessage({
-        encounter_id: encounterId,
-        patient_record_number: patientRecordNumber,
-        message: text,
-        conversation_history: history,
-        soap_note_context: result?.soap_note ?? null
-      });
-      const msgContent = res.assistant_message ?? res.response ?? "No response.";
-      const newMsg: Omit<ChatMessage, "id" | "createdAt"> = {
-        role: "assistant",
-        content: msgContent,
-        toolCalls: res.tool_calls,
-        suggestedFollowUps: res.suggested_follow_ups
-      };
-      const id = `assistant_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-      setChatMessages((current) => [...current, { ...newMsg, id, createdAt: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) }]);
-      saveCopilotMessage({ encounterId, runId: lastRunId, role: "assistant", content: msgContent });
-    } catch (err) {
-      addChatMessage({
-        role: "assistant",
-        content: err instanceof Error ? `Copilot unavailable: ${err.message}` : "Copilot unavailable."
-      });
-    }
-  }
-
-  async function handleNoteAction(action: NoteAction) {
-    setActionNotice(`${action.label}: under development.`);
-    await saveNoteAction({ encounterId, runId: lastRunId, actionKey: action.id, label: action.label });
-    try {
-      const response = await runNoteAction(action.id);
-      addChatMessage({ role: "tool", content: `${action.label}: ${response.status ?? "under_development"}` });
-    } catch {
-      addChatMessage({ role: "tool", content: `${action.label}: under development` });
-    }
-  }
-
   async function handleFollowUp(text: string) {
-    setChatInput(text);
-    const fakeEvent = { preventDefault: () => {} } as FormEvent<HTMLFormElement>;
-    setChatInput("");
     addChatMessage({ role: "physician", content: text });
     try {
       const history = chatMessages
@@ -827,7 +724,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         conversation_history: history,
         soap_note_context: result?.soap_note ?? null
       });
-      void fakeEvent;
       const msgContent = res.assistant_message ?? res.response ?? "No response.";
       const id = `assistant_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       setChatMessages((current) => [...current, {
@@ -847,85 +743,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     { key: "settings", label: "Settings", icon: Settings }
   ];
 
-  function renderSidePanel() {
-    if (activeTab === "patients") {
-      return (
-        <div className="divide-y divide-zinc-100">
-          {workspaceScribes.map((scribe) => (
-            <button key={scribe.patient} type="button" className="block w-full px-5 py-5 text-left hover:bg-zinc-50 min-h-[60px]">
-              <p className="text-[15px] font-medium text-zinc-950">{scribe.patient}</p>
-              <p className="mt-1 text-[15px] leading-6 text-zinc-600">{scribe.summary}</p>
-              <p className="mt-2 text-xs text-zinc-400">Pre-consultation report ready</p>
-            </button>
-          ))}
-        </div>
-      );
-    }
-    if (activeTab === "copilot") {
-      return (
-        <div className="space-y-5 px-5 py-5 text-[15px]">
-          <div>
-            <p className="font-medium text-zinc-950">Clinical Copilot tools</p>
-            <p className="mt-1 leading-6 text-zinc-500">Checklist completeness, red flag scanner, and evidence linking.</p>
-          </div>
-          <div className="space-y-2">
-            {["Ask about missing red flags", "Check checklist completeness", "Review uncertain terms"].map((q) => (
-              <button key={q} onClick={() => handleFollowUp(q)} type="button"
-                className="flex w-full items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2.5 text-left text-sm text-zinc-700 hover:border-zinc-950 hover:bg-zinc-50">
-                <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-zinc-400" />
-                {q}
-              </button>
-            ))}
-          </div>
-        </div>
-      );
-    }
-    if (activeTab === "settings") {
-      return (
-        <div className="space-y-5 px-5 py-5 text-[15px]">
-          <div>
-            <p className="font-medium text-zinc-950">Database</p>
-            <p className="mt-1 leading-6 text-zinc-500">Supabase stores encounters, runs, prompts, actions, and copilot messages.</p>
-          </div>
-          <div>
-            <p className="font-medium text-zinc-950">Current encounter</p>
-            <p className="mt-1 text-zinc-500">{activeScribe?.patient} / {encounterId}</p>
-          </div>
-          <Link href={routes.doctorDashboard} className="flex items-center gap-2 text-sm text-accent-500 hover:text-accent-600">
-            <FileText className="h-4 w-4" /> View note history
-          </Link>
-        </div>
-      );
-    }
-    return (
-      <div className="divide-y divide-zinc-100">
-        {workspaceScribes.map((scribe) => (
-          <button
-            key={scribe.id}
-            type="button"
-            onClick={() => router.push(routes.consultation(scribe.id))}
-            className={`block w-full px-5 py-5 text-left hover:bg-zinc-50 min-h-[60px] ${
-              scribe.id === encounterId ? "border-l-2 border-accent-500 bg-zinc-50" : "border-l-2 border-transparent"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[15px] font-medium text-zinc-950">{scribe.time}</p>
-                <p className="mt-0.5 text-xs text-zinc-500">{scribe.patient}</p>
-              </div>
-              <StatusBadge status={scribe.status} />
-            </div>
-            <p className="mt-2 line-clamp-2 text-[15px] leading-6 text-zinc-600">{scribe.summary}</p>
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  const scribeListVisible = mobilePanel === "list";
-
   return (
-    <div className="grid min-h-dvh bg-white text-[15px] text-zinc-900 grid-cols-1 lg:grid-cols-[68px_320px_1fr]">
+    <div className="grid h-[calc(100dvh-56px)] overflow-hidden bg-white text-[15px] text-zinc-900 grid-cols-1 lg:grid-cols-[68px_1fr]">
 
       {/* Icon rail */}
       <aside className="hidden lg:flex border-r border-zinc-200 bg-white">
@@ -950,51 +769,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         </nav>
       </aside>
 
-      {/* Scribe list */}
-      <aside className={`border-r border-zinc-200 bg-white ${scribeListVisible ? "block" : "hidden"} lg:block`}>
-        <div className="border-b border-zinc-200 p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="sajil-wordmark text-3xl text-zinc-950">SAJIL</h1>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  const { encounter_id } = await createEncounter(patientRecordNumber);
-                  router.push(routes.consultation(encounter_id));
-                } catch {
-                  setManualTranscript("");
-                  setResult(null);
-                  setActionNotice("");
-                  setStorageStatus("");
-                  setPipelineSteps([]);
-                  setPromptAnswers({});
-                  setPromptInputs({});
-                  setChatMessages([{ id: "seed_assistant", role: "assistant", content: "Ready for a new consultation.", createdAt: nowLabel() }]);
-                }
-              }}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-app border border-zinc-200 text-zinc-700 hover:border-zinc-950 hover:text-zinc-950"
-              aria-label="New note"
-              title="New note"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
-          <label className="mt-5 flex h-11 items-center gap-2 rounded-app border border-zinc-200 bg-white px-3 text-[15px] text-zinc-500 focus-within:border-accent-500">
-            <FileText className="h-4 w-4" />
-            <input className="w-full bg-transparent outline-none" placeholder="Search notes" />
-          </label>
-        </div>
-        {renderSidePanel()}
-      </aside>
-
       {/* Main content */}
-      <main className={`flex flex-col min-h-dvh min-w-0 bg-white lg:grid lg:grid-rows-[auto_1fr_auto] ${scribeListVisible ? "hidden lg:grid" : "flex"}`}>
-
-        {/* Mobile top bar */}
-        <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 lg:hidden">
-          <h1 className="sajil-wordmark text-xl text-zinc-950">SAJIL</h1>
-          <p className="text-xs text-zinc-500">{patientRecordNumber}</p>
-        </div>
+      <main className="flex flex-col h-full min-w-0 bg-white overflow-hidden lg:grid lg:grid-rows-[auto_1fr_auto]">
 
         {/* Patient context header */}
         <section className="flex-shrink-0 border-b border-zinc-200 px-4 py-4 sm:px-6">
@@ -1003,25 +779,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               <p className="text-xs font-medium uppercase text-zinc-400">Patient Context</p>
               <h2 className="mt-1 text-xl font-medium text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <select value={noteFormat} onChange={(e) => setNoteFormat(e.target.value)} aria-label="Note format"
-                className="h-11 rounded-app border border-zinc-200 bg-white px-3 outline-none focus:border-accent-500">
-                <option value="SOAP">SOAP</option>
-                <option value="focused_soap">Focused SOAP</option>
-                <option value="arabic_english_hybrid">Arabic-English</option>
-              </select>
-              <select value={dialectHint} onChange={(e) => setDialectHint(e.target.value)} aria-label="Dialect"
-                className="h-11 rounded-app border border-zinc-200 bg-white px-3 outline-none focus:border-accent-500">
-                <option value="gulf">Gulf Arabic</option>
-                <option value="msa">MSA</option>
-                <option value="levantine">Levantine</option>
-                <option value="egyptian">Egyptian</option>
-              </select>
-              <input value={patientRecordNumber} onChange={(e) => setPatientRecordNumber(e.target.value)}
-                aria-label="Patient record number"
-                className="h-11 w-24 rounded-app border border-zinc-200 px-3 outline-none focus:border-accent-500"
-                required />
-            </div>
+            <select value={noteFormat} onChange={(e) => setNoteFormat(e.target.value)} aria-label="Note format"
+              className="h-11 rounded-app border border-zinc-200 bg-white px-3 outline-none focus:border-accent-500">
+              <option value="SOAP">SOAP</option>
+              <option value="focused_soap">Focused SOAP</option>
+              <option value="arabic_english_hybrid">Arabic-English</option>
+            </select>
           </div>
         </section>
 
@@ -1114,7 +877,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 <button
                   type="submit"
                   disabled={isSubmitting || (inputMode === "manual" && !manualTranscript.trim()) || (inputMode !== "manual" && !audioFile)}
-                  className={`inline-flex h-11 items-center gap-2 rounded-app px-4 text-[15px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${isSubmitting ? "pixel-generating bg-zinc-800" : "bg-zinc-950 hover:bg-accent-600"}`}
+                  className={`inline-flex h-11 items-center gap-2 rounded-app px-4 text-[15px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${isSubmitting ? "pixel-generating bg-accent-500" : "bg-accent-500 hover:bg-accent-600"}`}
                 >
                   {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
                   {isSubmitting ? "Generating…" : "Generate note"}
@@ -1135,13 +898,26 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   {uncertainWords.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {uncertainWords.map((w) => (
-                        <span key={w.id ?? w.text} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                          w.risk === "critical" ? "bg-red-100 text-red-700"
-                          : w.risk === "high" ? "bg-amber-100 text-amber-700"
-                          : "bg-zinc-100 text-zinc-500"
-                        }`} title={w.possible_meanings?.join(" · ")}>
-                          <span dir="rtl">{w.text}</span>
-                          {w.risk && <RiskChip risk={w.risk} />}
+                        <span key={w.id ?? w.text} className="relative group/chip">
+                          <span className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                            w.risk === "critical" ? "bg-red-100 text-red-700"
+                            : w.risk === "high" ? "bg-amber-100 text-amber-700"
+                            : "bg-zinc-100 text-zinc-500"
+                          }`}>
+                            <span dir="rtl">{w.text}</span>
+                            {w.risk && <RiskChip risk={w.risk} />}
+                          </span>
+                          {/* Hover card */}
+                          <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-zinc-200 bg-white p-3 shadow-lg opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100">
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <span className="font-bold text-zinc-950 text-sm" dir="rtl">{w.text}</span>
+                              {w.risk && <RiskChip risk={w.risk} />}
+                            </div>
+                            {w.possible_meanings && w.possible_meanings.length > 0 && (
+                              <p className="text-xs leading-5 text-zinc-600">{w.possible_meanings.join(" · ")}</p>
+                            )}
+                            {w.reason && <p className="mt-1 text-xs leading-5 text-zinc-400">{w.reason}</p>}
+                          </div>
                         </span>
                       ))}
                     </div>
@@ -1198,9 +974,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           </div>
 
           {/* Right: Clinical Copilot */}
-          <aside className={`min-h-0 grid-rows-[auto_1fr_auto_auto] bg-white ${mobilePanel === "copilot" ? "grid" : "hidden lg:grid"}`}>
+          <aside className={`flex flex-col min-h-0 bg-white ${mobilePanel === "copilot" ? "flex" : "hidden lg:flex"}`}>
 
-            <header className="border-b border-zinc-200 px-5 py-4">
+            <header className="flex-shrink-0 border-b border-zinc-200 px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-medium text-zinc-950">Clinical Copilot</h2>
@@ -1212,48 +988,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               </div>
             </header>
 
-            <div className="min-h-0 overflow-y-auto px-5 py-5">
-              <div className="space-y-6">
-
-                {/* AI status */}
-                <section className="border-l-2 border-zinc-950 pl-4">
-                  <p className="text-xs font-medium uppercase text-zinc-400">AI status</p>
-                  <p className="mt-1 text-sm leading-6 text-zinc-800">
-                    {result
-                      ? "I drafted the note and will ask one review question at a time. The final note still needs physician review."
-                      : "Generate a note from the transcript, then I will guide the review here."}
-                  </p>
-                </section>
-
-                {/* Uncertainty panel — shown after result */}
-                {uncertainWords.length > 0 && (
-                  <section>
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-xs font-medium uppercase text-zinc-400">Flagged terms</p>
-                      <span className="text-xs text-zinc-400">{uncertainWords.length} term{uncertainWords.length !== 1 ? "s" : ""}</span>
-                    </div>
-                    <div className="space-y-2">
-                      {uncertainWords.map((w) => (
-                        <div key={w.id ?? w.text} className={`rounded-lg border p-3 ${
-                          w.risk === "critical" ? "border-red-200 bg-red-50"
-                          : w.risk === "high" ? "border-amber-200 bg-amber-50"
-                          : "border-zinc-200 bg-zinc-50"
-                        }`}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-zinc-950" dir="rtl">{w.text}</span>
-                            <RiskChip risk={w.risk} />
-                          </div>
-                          {w.possible_meanings && w.possible_meanings.length > 0 && (
-                            <p className="mt-1 text-xs text-zinc-600">
-                              {w.possible_meanings.join(" · ")}
-                            </p>
-                          )}
-                          {w.reason && <p className="mt-0.5 text-xs text-zinc-400">{w.reason}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
+            {/* Single scrollable body — physician review + messages */}
+            <div ref={chatScrollRef} className="messages-scroller flex-1 min-h-0 overflow-y-auto px-5 pt-5 pb-4 space-y-6">
 
                 {/* Physician prompts */}
                 <section ref={physicianReviewRef}>
@@ -1355,114 +1091,69 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   )}
                 </section>
 
-                {/* Tool suggestions */}
-                <section>
-                  <p className="text-xs font-medium uppercase text-zinc-400">Tool suggestions</p>
-                  <div className="mt-3 space-y-2">
-                    {noteActions.map((action, index) => (
-                      <button
-                        key={action.id}
-                        type="button"
-                        onClick={() => handleNoteAction(action)}
-                        className="flex min-h-[44px] w-full items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-left text-sm font-medium text-zinc-800 hover:border-zinc-950"
-                      >
-                        {index === 0 ? <Brain className="h-4 w-4 text-zinc-500" /> : <Activity className="h-4 w-4 text-zinc-500" />}
-                        <span>{action.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {actionNotice && <p className="mt-3 text-sm text-zinc-500">{actionNotice}</p>}
-                </section>
-
-                {/* Chat messages */}
-                <section className="space-y-4">
-                  <p className="text-xs font-medium uppercase text-zinc-400">Messages</p>
+                {/* Messages */}
+                <section className="border-t border-zinc-100 pt-5">
+                  <p className="mb-3 text-xs font-medium uppercase text-zinc-400">Messages</p>
+                  <div className="space-y-4">
                   {chatMessages.map((message) => (
-                    <article key={message.id} className={message.role === "physician" ? "text-right" : ""}>
-                      <p className="text-xs font-medium uppercase text-zinc-400">
-                        {message.role} · {message.createdAt}
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-zinc-800">{message.content}</p>
-                      {/* Tool call cards */}
-                      {message.toolCalls && message.toolCalls.length > 0 && (
-                        <div className="mt-2 space-y-2 text-left">
-                          {message.toolCalls.map((tc, i) => (
-                            <ToolCallCard key={`${tc.tool}_${i}`} tc={tc} />
-                          ))}
-                        </div>
-                      )}
-                      {/* Suggested follow-ups */}
-                      {message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2 text-left">
-                          {message.suggestedFollowUps.slice(0, 3).map((q) => (
-                            <button
-                              key={q}
-                              type="button"
-                              onClick={() => handleFollowUp(q)}
-                              className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 hover:border-accent-500 hover:text-accent-600"
-                            >
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </article>
-                  ))}
-                </section>
-
-              </div>
+                <article key={message.id} className={message.role === "physician" ? "text-right" : ""}>
+                  <p className="text-xs font-medium uppercase text-zinc-400">
+                    {message.role} · {message.createdAt}
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-zinc-800">{message.content}</p>
+                  {message.toolCalls && message.toolCalls.length > 0 && (
+                    <div className="mt-2 space-y-2 text-left">
+                      {message.toolCalls.map((tc, i) => (
+                        <ToolCallCard key={`${tc.tool}_${i}`} tc={tc} />
+                      ))}
+                    </div>
+                  )}
+                  {message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2 text-left">
+                      {message.suggestedFollowUps.slice(0, 3).map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          onClick={() => handleFollowUp(q)}
+                          className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 hover:border-accent-500 hover:text-accent-600"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
             </div>
 
-            {/* Tool quick-access bar */}
-            <div className="border-t border-zinc-100 px-5 py-3">
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {toolItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => { addChatMessage({ role: "tool", content: `${item.label} support is available for this consultation review.` }); }}
-                      className="flex min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-app text-zinc-500 hover:bg-zinc-100 hover:text-accent-600"
-                      title={item.label}
-                      aria-label={item.label}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Tool quick-access bar */}
+          <div className="flex-shrink-0 border-t border-zinc-100 px-5 py-3">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {toolItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => addChatMessage({ role: "tool", content: `${item.label} support is available for this consultation review.` })}
+                    className="flex min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-app text-zinc-500 hover:bg-zinc-100 hover:text-accent-600"
+                    title={item.label}
+                    aria-label={item.label}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Chat input */}
-            <div className="border-t border-zinc-200 p-5">
-              <form onSubmit={handleChatSubmit} className="flex gap-2">
-                <input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  className="min-h-[44px] min-w-0 flex-1 rounded-app border border-zinc-200 px-3 py-2 outline-none focus:border-accent-500"
-                  placeholder="Ask Copilot…"
-                />
-                <button
-                  type="submit"
-                  className="inline-flex min-h-[44px] items-center rounded-app bg-zinc-950 px-3 text-white hover:bg-accent-600"
-                  aria-label="Send"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
-              </form>
-            </div>
-
-          </aside>
+        </aside>
         </section>
 
         {/* Mobile bottom nav */}
         <nav className="flex-shrink-0 flex items-stretch justify-around border-t border-zinc-200 bg-white lg:hidden">
-          <button type="button" onClick={() => setMobilePanel("list")}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs font-medium ${mobilePanel === "list" ? "text-accent-600" : "text-zinc-500"}`}>
-            <FileText className="h-5 w-5" />
-            Scribes
-          </button>
           <button type="button" onClick={() => setMobilePanel("main")}
             className={`flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs font-medium ${mobilePanel === "main" ? "text-accent-600" : "text-zinc-500"}`}>
             <ClipboardList className="h-5 w-5" />
