@@ -128,7 +128,7 @@ export async function listEncounters() {
 
   const { data, error } = await supabase
     .from("sajil_encounters")
-    .select("id, patient_record_number, status, summary, consultation_time")
+    .select("id, patient_record_number, status, summary, consultation_time, dialect_hint")
     .is("deleted_at", null)
     .order("consultation_time", { ascending: false })
     .limit(30);

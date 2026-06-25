@@ -22,7 +22,6 @@ import {
   Settings,
   ShieldAlert,
   Square,
-  Users,
   Wrench,
   Zap
 } from "lucide-react";
@@ -48,7 +47,6 @@ import { toJson } from "@/lib/supabase/types";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type InputMode = "manual" | "record" | "upload";
-type RailTab = "scribes" | "patients" | "copilot" | "settings";
 type MobilePanel = "list" | "main" | "copilot";
 type ChatRole = "assistant" | "physician" | "system" | "tool";
 type RiskLevel = "critical" | "high" | "medium";
@@ -123,13 +121,18 @@ const SUPPORTED_AUDIO_TYPES = new Set([
 const MAX_AUDIO_FILE_SIZE = 200 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = ["mp3", "wav", "m4a", "mp4", "aac", "ogg", "webm", "flac"];
 
+const DIALECT_OPTIONS = [
+  { value: "gulf", label: "Gulf" },
+  { value: "levantine", label: "Levantine" },
+  { value: "egyptian", label: "Egyptian" },
+  { value: "msa", label: "MSA" },
+];
+
 const toolItems = [
-  { label: "Transcript", icon: ScrollText },
-  { label: "Note", icon: FileText },
-  { label: "Uncertainty", icon: CircleHelp },
-  { label: "Evidence", icon: BookOpen },
-  { label: "Tools", icon: Wrench },
-  { label: "Settings", icon: Settings }
+  { label: "Run checklist", icon: ListChecks, query: "Run the clinical checklist for this consultation and tell me what's missing." },
+  { label: "Red flags", icon: ShieldAlert, query: "Scan this note for red flags and high-risk clinical patterns." },
+  { label: "Drug interactions", icon: Wrench, query: "Check the plan section for any drug-drug interactions." },
+  { label: "ICD codes", icon: FileText, query: "Suggest ICD-10 codes for the diagnosis in this SOAP note." },
 ];
 
 // ── Helper functions ──────────────────────────────────────────────────────────
@@ -488,11 +491,11 @@ function ToolCallCard({ tc }: { tc: CopilotToolCallResult }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function SajilWorkspace({ encounterId }: { encounterId: string }) {
-  const [activeTab, setActiveTab] = useState<RailTab>("scribes");
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("main");
   const [inputMode, setInputMode] = useState<InputMode>("manual");
+  const [copilotInput, setCopilotInput] = useState("");
   const [patientRecordNumber] = useState("P023");
-  const [dialectHint] = useState("gulf");
+  const [dialectHint, setDialectHint] = useState("gulf");
   const [noteFormat, setNoteFormat] = useState("SOAP");
   const router = useRouter();
   const [manualTranscript, setManualTranscript] = useState("");
@@ -736,60 +739,42 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     }
   }
 
-  const railItems: Array<{ key: RailTab; label: string; icon: typeof FileText }> = [
-    { key: "scribes", label: "Notes", icon: FileText },
-    { key: "patients", label: "Patients", icon: Users },
-    { key: "copilot", label: "Clinical Copilot", icon: MessageCircle },
-    { key: "settings", label: "Settings", icon: Settings }
-  ];
-
   return (
-    <div className="grid h-[calc(100dvh-56px)] overflow-hidden bg-white text-[15px] text-zinc-900 grid-cols-1 lg:grid-cols-[68px_1fr]">
-
-      {/* Icon rail */}
-      <aside className="hidden lg:flex border-r border-zinc-200 bg-white">
-        <nav className="flex w-full flex-col items-center gap-3 px-2 py-5" aria-label="Primary">
-          {railItems.map((item, index) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setActiveTab(item.key)}
-                className={`rounded-app p-3 min-h-[44px] min-w-[44px] flex items-center justify-center ${
-                  activeTab === item.key ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"
-                } ${index === railItems.length - 1 ? "mt-auto" : ""}`}
-                aria-label={item.label}
-                title={item.label}
-              >
-                <Icon className="h-5 w-5" />
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
+    <div className="grid h-[calc(100dvh-56px)] overflow-hidden bg-white text-[15px] text-zinc-900">
 
       {/* Main content */}
       <main className="flex flex-col h-full min-w-0 bg-white overflow-hidden lg:grid lg:grid-rows-[auto_1fr_auto]">
 
         {/* Patient context header */}
-        <section className="flex-shrink-0 border-b border-zinc-200 px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <section className="flex-shrink-0 border-b-2 border-zinc-950 px-4 py-3 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase text-zinc-400">Patient Context</p>
-              <h2 className="mt-1 text-xl font-medium text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Patient</p>
+              <h2 className="mt-0.5 font-mono text-base font-bold text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
             </div>
-            <select value={noteFormat} onChange={(e) => setNoteFormat(e.target.value)} aria-label="Note format"
-              className="h-11 rounded-app border border-zinc-200 bg-white px-3 outline-none focus:border-accent-500">
-              <option value="SOAP">SOAP</option>
-              <option value="focused_soap">Focused SOAP</option>
-              <option value="arabic_english_hybrid">Arabic-English</option>
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={dialectHint}
+                onChange={(e) => setDialectHint(e.target.value)}
+                aria-label="Arabic dialect"
+                className="h-9 border-2 border-zinc-950 bg-white px-2 font-mono text-xs font-bold uppercase outline-none focus:bg-zinc-950 focus:text-white"
+              >
+                {DIALECT_OPTIONS.map((d) => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
+              <select value={noteFormat} onChange={(e) => setNoteFormat(e.target.value)} aria-label="Note format"
+                className="h-9 border-2 border-zinc-950 bg-white px-2 font-mono text-xs font-bold uppercase outline-none focus:bg-zinc-950 focus:text-white">
+                <option value="SOAP">SOAP</option>
+                <option value="focused_soap">Focused SOAP</option>
+                <option value="arabic_english_hybrid">Arabic-English</option>
+              </select>
+            </div>
           </div>
         </section>
 
         {/* Inner content */}
-        <section className="min-h-0 flex-1 grid overflow-hidden lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="min-h-0 flex-1 grid overflow-hidden lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_460px]">
 
           {/* Left: Transcript + SOAP */}
           <div className={`min-h-0 overflow-y-auto border-r border-zinc-200 px-4 py-6 sm:px-6 ${mobilePanel === "copilot" ? "hidden lg:block" : "block"}`}>
@@ -974,17 +959,17 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           </div>
 
           {/* Right: Clinical Copilot */}
-          <aside className={`flex flex-col min-h-0 bg-white ${mobilePanel === "copilot" ? "flex" : "hidden lg:flex"}`}>
+          <aside className={`flex flex-col min-h-0 border-l-2 border-zinc-950 bg-white ${mobilePanel === "copilot" ? "flex" : "hidden lg:flex"}`}>
 
-            <header className="flex-shrink-0 border-b border-zinc-200 px-5 py-4">
-              <div className="flex items-start justify-between gap-3">
+            <header className="flex-shrink-0 border-b-2 border-zinc-950 bg-zinc-950 px-5 py-3">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-medium text-zinc-950">Clinical Copilot</h2>
-                  <p className="mt-1 text-sm text-zinc-500">
-                    {result ? "Draft ready for physician review" : "Waiting for note generation"} · {patientRecordNumber}
-                  </p>
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Clinical Copilot</p>
+                  <h2 className="mt-0.5 font-mono text-sm font-bold text-white">
+                    {result ? "Draft ready — physician review" : "Awaiting note"}
+                  </h2>
                 </div>
-                {isSubmitting ? <SignalTrace /> : <MessageCircle className="h-5 w-5 text-accent-500" />}
+                {isSubmitting ? <SignalTrace /> : <MessageCircle className="h-4 w-4 text-zinc-400" />}
               </div>
             </header>
 
@@ -994,29 +979,29 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 {/* Physician prompts */}
                 <section ref={physicianReviewRef}>
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="text-xs font-medium uppercase text-zinc-400">Physician review</p>
+                    <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Physician review</p>
                     {reviewPrompts.length > 0 && (
-                      <span className="text-xs text-zinc-500">{answeredPromptCount} of {reviewPrompts.length}</span>
+                      <span className="font-mono text-[10px] text-zinc-500">{answeredPromptCount}/{reviewPrompts.length}</span>
                     )}
                   </div>
 
                   {currentPrompt ? (
-                    <article className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+                    <article className="border-2 border-zinc-950 bg-white p-4">
                       {currentPrompt.priority && (
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase mb-2 ${
-                          currentPrompt.priority === "critical" ? "bg-red-100 text-red-700"
-                          : currentPrompt.priority === "high" ? "bg-amber-100 text-amber-700"
-                          : "bg-zinc-100 text-zinc-500"
+                        <span className={`inline-block px-2 py-0.5 font-mono text-[10px] font-bold uppercase mb-2 ${
+                          currentPrompt.priority === "critical" ? "bg-zinc-950 text-white"
+                          : currentPrompt.priority === "high" ? "bg-zinc-200 text-zinc-950"
+                          : "border border-zinc-300 text-zinc-500"
                         }`}>{currentPrompt.priority}</span>
                       )}
                       {currentPrompt.title && (
-                        <p className="text-xs font-semibold uppercase text-accent-600 mb-1">{currentPrompt.title}</p>
+                        <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">{currentPrompt.title}</p>
                       )}
-                      <p className="text-[15px] font-medium leading-7 text-zinc-950">
+                      <p className="text-sm font-medium leading-6 text-zinc-950">
                         {currentPrompt.question}
                       </p>
                       {currentPrompt.reason && (
-                        <p className="mt-2 text-sm leading-6 text-zinc-500">{currentPrompt.reason}</p>
+                        <p className="mt-2 text-xs leading-5 text-zinc-500">{currentPrompt.reason}</p>
                       )}
 
                       {/* Multiple choice options */}
@@ -1027,11 +1012,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                               key={`${currentPrompt.id}-${option.value}`}
                               type="button"
                               onClick={() => handlePromptAnswer(currentPrompt, option)}
-                              className="group flex min-h-[44px] w-full items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-accent-500 hover:bg-accent-50 hover:text-accent-700"
+                              className="flex min-h-[40px] w-full items-center gap-3 border border-zinc-200 px-3 py-2 text-left font-mono text-xs font-bold uppercase tracking-wide text-zinc-700 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white"
                             >
-                              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 border-zinc-300 group-hover:border-accent-500">
-                                <span className="h-2 w-2 rounded-full bg-transparent group-hover:bg-accent-500" />
-                              </span>
                               {option.label}
                             </button>
                           ))}
@@ -1050,7 +1032,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                               if (text) handlePromptAnswer(currentPrompt, { text });
                             }
                           }}
-                          className="min-h-[44px] min-w-0 flex-1 rounded-app border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-950"
+                          className="min-h-[40px] min-w-0 flex-1 border-2 border-zinc-950 bg-white px-3 py-2 font-mono text-xs outline-none placeholder:text-zinc-400"
                           placeholder="Or type a correction…"
                         />
                         <button
@@ -1060,21 +1042,21 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                             if (text) handlePromptAnswer(currentPrompt, { text });
                           }}
                           disabled={!promptInputs[currentPrompt.id]?.trim()}
-                          className="min-h-[44px] rounded-app bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
+                          className="min-h-[40px] border-2 border-zinc-950 bg-zinc-950 px-3 font-mono text-xs font-bold uppercase tracking-widest text-white hover:bg-white hover:text-zinc-950 disabled:opacity-40"
                         >
                           Save
                         </button>
                       </div>
                     </article>
                   ) : result && reviewPrompts.length > 0 ? (
-                    <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
-                      <p className="text-sm leading-6 text-emerald-800">
-                        Review questions answered. Ready for final physician review.
+                    <div className="flex items-start gap-2 border-2 border-zinc-950 bg-zinc-950 p-4">
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-white" />
+                      <p className="font-mono text-xs font-bold uppercase tracking-wide text-white">
+                        Review complete. Ready for final physician review.
                       </p>
                     </div>
                   ) : (
-                    <p className="rounded-xl border border-zinc-200 p-4 text-sm leading-6 text-zinc-500">
+                    <p className="border border-zinc-200 p-4 font-mono text-xs text-zinc-500">
                       Review questions will appear after note generation.
                     </p>
                   )}
@@ -1082,9 +1064,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   {answeredPromptCount > 0 && (
                     <div className="mt-4 space-y-2">
                       {reviewPrompts.filter((p) => promptAnswers[p.id]).map((p) => (
-                        <div key={p.id} className="border-l-2 border-emerald-500 pl-3">
-                          <p className="text-xs font-medium uppercase text-zinc-400">Answered</p>
-                          <p className="mt-1 text-sm text-zinc-700">{promptAnswers[p.id]}</p>
+                        <div key={p.id} className="border-l-2 border-zinc-950 pl-3">
+                          <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Answered</p>
+                          <p className="mt-1 text-xs text-zinc-700">{promptAnswers[p.id]}</p>
                         </div>
                       ))}
                     </div>
@@ -1092,61 +1074,103 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 </section>
 
                 {/* Messages */}
-                <section className="border-t border-zinc-100 pt-5">
-                  <p className="mb-3 text-xs font-medium uppercase text-zinc-400">Messages</p>
-                  <div className="space-y-4">
-                  {chatMessages.map((message) => (
-                <article key={message.id} className={message.role === "physician" ? "text-right" : ""}>
-                  <p className="text-xs font-medium uppercase text-zinc-400">
-                    {message.role} · {message.createdAt}
-                  </p>
-                  <p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-zinc-800">{message.content}</p>
-                  {message.toolCalls && message.toolCalls.length > 0 && (
-                    <div className="mt-2 space-y-2 text-left">
-                      {message.toolCalls.map((tc, i) => (
-                        <ToolCallCard key={`${tc.tool}_${i}`} tc={tc} />
-                      ))}
-                    </div>
-                  )}
-                  {message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2 text-left">
-                      {message.suggestedFollowUps.slice(0, 3).map((q) => (
-                        <button
-                          key={q}
-                          type="button"
-                          onClick={() => handleFollowUp(q)}
-                          className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 hover:border-accent-500 hover:text-accent-600"
-                        >
-                          {q}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </article>
-              ))}
-            </div>
-          </section>
+                <section className="border-t-2 border-zinc-950 pt-5">
+                  <p className="mb-3 font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Chat</p>
+                  <div className="space-y-3">
+                    {chatMessages.map((message) => {
+                      const isPhysician = message.role === "physician";
+                      const isAssistant = message.role === "assistant";
+                      const isSystem = message.role === "system" || message.role === "tool";
+                      return (
+                        <article key={message.id} className={isPhysician ? "flex flex-col items-end" : "flex flex-col items-start"}>
+                          <p className="mb-1 font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                            {isPhysician ? "You" : isAssistant ? "Copilot" : "System"} · {message.createdAt}
+                          </p>
+                          <div className={`max-w-[85%] px-3 py-2.5 text-sm leading-6 ${
+                            isPhysician
+                              ? "bg-zinc-950 text-white"
+                              : isSystem
+                              ? "border border-zinc-200 bg-zinc-50 text-zinc-600 font-mono text-xs"
+                              : "border border-zinc-200 bg-white text-zinc-800"
+                          }`}>
+                            <p className="whitespace-pre-wrap">{message.content}</p>
+                          </div>
+                          {message.toolCalls && message.toolCalls.length > 0 && (
+                            <div className="mt-2 w-full space-y-2">
+                              {message.toolCalls.map((tc, i) => (
+                                <ToolCallCard key={`${tc.tool}_${i}`} tc={tc} />
+                              ))}
+                            </div>
+                          )}
+                          {message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {message.suggestedFollowUps.slice(0, 3).map((q) => (
+                                <button
+                                  key={q}
+                                  type="button"
+                                  onClick={() => handleFollowUp(q)}
+                                  className="border border-zinc-300 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-zinc-600 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white"
+                                >
+                                  {q}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
             </div>
 
           {/* Tool quick-access bar */}
-          <div className="flex-shrink-0 border-t border-zinc-100 px-5 py-3">
-            <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex-shrink-0 border-t-2 border-zinc-950 px-4 py-3">
+            <p className="mb-2 font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Quick tools</p>
+            <div className="grid grid-cols-2 gap-1.5">
               {toolItems.map((item) => {
                 const Icon = item.icon;
                 return (
                   <button
                     key={item.label}
                     type="button"
-                    onClick={() => addChatMessage({ role: "tool", content: `${item.label} support is available for this consultation review.` })}
-                    className="flex min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-app text-zinc-500 hover:bg-zinc-100 hover:text-accent-600"
+                    onClick={() => handleFollowUp(item.query)}
+                    className="flex min-h-[40px] items-center gap-2 border border-zinc-200 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wide text-zinc-600 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white"
                     title={item.label}
-                    aria-label={item.label}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    {item.label}
                   </button>
                 );
               })}
             </div>
+          </div>
+
+          {/* Copilot chat input */}
+          <div className="flex-shrink-0 border-t-2 border-zinc-950 p-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const text = copilotInput.trim();
+                if (!text) return;
+                setCopilotInput("");
+                handleFollowUp(text);
+              }}
+              className="flex gap-2"
+            >
+              <input
+                value={copilotInput}
+                onChange={(e) => setCopilotInput(e.target.value)}
+                placeholder="Ask the copilot..."
+                className="min-h-[40px] min-w-0 flex-1 border-2 border-zinc-950 bg-white px-3 font-mono text-sm outline-none placeholder:text-zinc-400 focus:bg-zinc-50"
+              />
+              <button
+                type="submit"
+                disabled={!copilotInput.trim()}
+                className="min-h-[40px] border-2 border-zinc-950 bg-zinc-950 px-4 font-mono text-xs font-bold uppercase tracking-widest text-white hover:bg-white hover:text-zinc-950 disabled:opacity-40"
+              >
+                Send
+              </button>
+            </form>
           </div>
 
         </aside>

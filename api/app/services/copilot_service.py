@@ -14,7 +14,7 @@ from app.core.json_utils import extract_json_object
 from app.prompts import build_copilot_synthesis_prompt, build_tool_selection_prompt
 from app.services.fanar_service import FanarService
 from app.services.groq_service import GroqService
-from app.tools import run_checklist, scan_red_flags
+from app.tools import run_checklist, scan_red_flags, check_drug_interactions, suggest_icd_codes
 
 
 class CopilotService:
@@ -34,7 +34,7 @@ class CopilotService:
 
         # ── Phase 1: Tool selection ───────────────────────────────────────
         tool_selection = self._select_tools(message, soap_note_context)
-        tools_to_call: List[str] = tool_selection.get("tools_to_call", [])[:2]
+        tools_to_call: List[str] = tool_selection.get("tools_to_call", [])[:3]
         complaint_type: str = tool_selection.get("complaint_type", "general")
 
         # ── Phase 2: Tool execution (deterministic) ───────────────────────
@@ -46,6 +46,12 @@ class CopilotService:
             elif tool_name == "red_flag_tool":
                 result = scan_red_flags(complaint_type, soap_note_dict)
                 tool_results.append({"tool": tool_name, "input": {"complaint_type": complaint_type}, "result": result})
+            elif tool_name == "drug_interaction_tool":
+                result = check_drug_interactions(soap_note_dict)
+                tool_results.append({"tool": tool_name, "input": {}, "result": result})
+            elif tool_name == "icd_suggestion_tool":
+                result = suggest_icd_codes(soap_note_dict)
+                tool_results.append({"tool": tool_name, "input": {}, "result": result})
 
         # ── Phase 3: Synthesis ────────────────────────────────────────────
         history_lines = self._format_history(conversation_history)

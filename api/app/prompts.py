@@ -245,13 +245,17 @@ The physician asked a question. Decide which clinical tools to run, if any.
 Available tools:
 - checklist_tool: checks whether required clinical items are documented for a given complaint type
 - red_flag_tool: scans the note for missing or present high-risk clinical patterns
+- drug_interaction_tool: checks the plan section for known drug-drug interactions
+- icd_suggestion_tool: maps the assessment and chief complaint to probable ICD-10 codes
 
 complaint_type options: respiratory, cardiac, gastrointestinal, general
 
 Rules:
 - Only call tools that are relevant to the physician's question.
 - If the question is a direct clinical knowledge question, set tools_to_call to [].
-- Limit to 2 tools maximum.
+- Call drug_interaction_tool when medications or prescriptions are mentioned.
+- Call icd_suggestion_tool when coding, diagnosis, or ICD is mentioned.
+- Limit to 3 tools maximum.
 
 SOAP note context (may be empty):
 {soap_context or "(none)"}
