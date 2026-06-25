@@ -18,13 +18,16 @@ export async function saveScribeRun(input: SaveScribeRunInput) {
     return { runId: undefined, error: "Supabase is not configured" };
   }
 
-  const summary = [
-    typeof input.response.translation === "object" ? null : input.response.translation,
-    input.manualTranscript
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .slice(0, 180);
+  const soapNote = input.response.soap_note as Record<string, unknown> | null | undefined;
+  const chiefComplaint = soapNote?.subjective && typeof soapNote.subjective === "object"
+    ? ((soapNote.subjective as Record<string, unknown>).chief_complaint as string | null | undefined)
+    : null;
+  const translation = input.response.translation as Record<string, unknown> | null | undefined;
+  const clinicalTranslation = translation && typeof translation === "object"
+    ? (translation.clinical_translation as string | null | undefined)
+    : null;
+  const summary = (chiefComplaint || clinicalTranslation || input.manualTranscript || "")
+    .slice(0, 180) || null;
 
   const encounter = await supabase
     .from("sajil_encounters")
@@ -40,6 +43,7 @@ export async function saveScribeRun(input: SaveScribeRunInput) {
     .single();
 
   if (encounter.error) {
+    console.error("[saveScribeRun] encounter upsert failed:", encounter.error);
     return { runId: undefined, error: encounter.error.message };
   }
 
@@ -75,6 +79,7 @@ export async function saveScribeRun(input: SaveScribeRunInput) {
     .single();
 
   if (run.error) {
+    console.error("[saveScribeRun] scribe run insert failed:", run.error);
     return { runId: undefined, error: run.error.message };
   }
 

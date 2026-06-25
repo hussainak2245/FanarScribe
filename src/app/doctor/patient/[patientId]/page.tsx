@@ -67,10 +67,9 @@ export default async function PatientWorkflowPage({ params }: { params: Promise<
   const completed = appointments.filter((appointment) => appointment.status.includes("ready") || appointment.status.includes("follow-up"));
 
   return (
-    <main className="min-h-screen bg-white px-6 py-6 text-zinc-900">
+    <main className="px-6 py-6">
       <header className="border-b border-zinc-200 pb-5">
-        <p className="sajil-wordmark text-3xl text-zinc-950">SAJIL</p>
-        <h1 className="mt-6 text-2xl font-medium text-zinc-950">Patient Workflow</h1>
+        <h1 className="text-2xl font-medium text-zinc-950">Patient Workflow</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">
           Track awaiting, active, and completed patients while keeping pre-consultation reports one click away.
         </p>

@@ -26,11 +26,17 @@ const DIALECT_LABELS: Record<string, string> = {
 export function NoteHistory() {
   const [encounters, setEncounters] = useState<Encounter[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await listEncounters();
+    setLoadError(null);
+    const { data, error } = await listEncounters();
+    if (error) {
+      console.error("[NoteHistory] listEncounters error:", error);
+      setLoadError(error);
+    }
     setEncounters((data as Encounter[]) ?? []);
     setLoading(false);
   }, []);
@@ -63,9 +69,13 @@ export function NoteHistory() {
       <SoftPanel className="p-4 sm:p-5" tone="paper">
         <p className="text-xs font-black uppercase text-magenta-500">Notes</p>
         <h2 className="mt-1 text-2xl font-black text-navy-900">Session history</h2>
-        <p className="mt-4 text-sm text-zinc-500">
-          No saved notes yet. Open the scribe and process a consultation to see it here.
-        </p>
+        {loadError ? (
+          <p className="mt-4 text-sm text-red-500">Could not load notes: {loadError}</p>
+        ) : (
+          <p className="mt-4 text-sm text-zinc-500">
+            No saved notes yet. Open the scribe and process a consultation to see it here.
+          </p>
+        )}
       </SoftPanel>
     );
   }

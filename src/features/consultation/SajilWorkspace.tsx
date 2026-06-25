@@ -9,6 +9,7 @@ import {
   BookOpen,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   ClipboardList,
@@ -753,22 +754,32 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               <h2 className="mt-1 text-xl font-medium text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={dialectHint}
-                onChange={(e) => setDialectHint(e.target.value)}
-                aria-label="Arabic dialect"
-                className="h-11 rounded-app border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-accent-500"
-              >
-                {DIALECT_OPTIONS.map((d) => (
-                  <option key={d.value} value={d.value}>{d.label} Arabic</option>
-                ))}
-              </select>
-              <select value={noteFormat} onChange={(e) => setNoteFormat(e.target.value)} aria-label="Note format"
-                className="h-11 rounded-app border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-accent-500">
-                <option value="SOAP">SOAP</option>
-                <option value="focused_soap">Focused SOAP</option>
-                <option value="arabic_english_hybrid">Arabic-English</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={dialectHint}
+                  onChange={(e) => setDialectHint(e.target.value)}
+                  aria-label="Arabic dialect"
+                  className="h-11 appearance-none rounded-app border border-zinc-200 bg-white pl-3 pr-8 text-sm outline-none focus:border-accent-500"
+                >
+                  {DIALECT_OPTIONS.map((d) => (
+                    <option key={d.value} value={d.value}>{d.label} Arabic</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+              </div>
+              <div className="relative">
+                <select
+                  value={noteFormat}
+                  onChange={(e) => setNoteFormat(e.target.value)}
+                  aria-label="Note format"
+                  className="h-11 appearance-none rounded-app border border-zinc-200 bg-white pl-3 pr-8 text-sm outline-none focus:border-accent-500"
+                >
+                  <option value="SOAP">SOAP</option>
+                  <option value="focused_soap">Focused SOAP</option>
+                  <option value="arabic_english_hybrid">Arabic-English</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+              </div>
             </div>
           </div>
         </section>
