@@ -9,17 +9,17 @@ const navItems = [
 
 export function DoctorTopNav() {
   return (
-    <header className="sticky top-0 z-40 border-b-2 border-zinc-950 bg-white">
+    <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white">
       <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6">
         <Link className="sajil-wordmark text-xl text-zinc-950" href="/">
           SAJIL
         </Link>
-        <nav className="hidden items-center gap-0 md:flex" aria-label="Doctor navigation">
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Doctor navigation">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="border-l-2 border-zinc-950 px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest text-zinc-600 transition hover:bg-zinc-950 hover:text-white"
+              className="rounded-app px-3 py-2 text-sm font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
             >
               {item.label}
             </Link>
@@ -27,10 +27,10 @@ export function DoctorTopNav() {
         </nav>
         <div className="flex shrink-0 items-center gap-3">
           <Link
-            className="border-2 border-zinc-950 bg-zinc-950 px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest text-white transition hover:bg-white hover:text-zinc-950"
+            className="rounded-app bg-accent-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-accent-600"
             href={routes.consultation("E001")}
           >
-            New Scribe
+            New scribe
           </Link>
         </div>
       </div>

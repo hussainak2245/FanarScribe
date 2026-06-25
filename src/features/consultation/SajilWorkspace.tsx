@@ -725,7 +725,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         patient_record_number: patientRecordNumber,
         message: text,
         conversation_history: history,
-        soap_note_context: result?.soap_note ?? null
+        soap_note_context: result?.soap_note ? JSON.stringify(result.soap_note) : null
       });
       const msgContent = res.assistant_message ?? res.response ?? "No response.";
       const id = `assistant_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -746,25 +746,25 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       <main className="flex flex-col h-full min-w-0 bg-white overflow-hidden lg:grid lg:grid-rows-[auto_1fr_auto]">
 
         {/* Patient context header */}
-        <section className="flex-shrink-0 border-b-2 border-zinc-950 px-4 py-3 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <section className="flex-shrink-0 border-b border-zinc-200 px-4 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="min-w-0">
-              <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Patient</p>
-              <h2 className="mt-0.5 font-mono text-base font-bold text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
+              <p className="text-xs font-medium uppercase text-zinc-400">Patient Context</p>
+              <h2 className="mt-1 text-xl font-medium text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
             </div>
             <div className="flex items-center gap-2">
               <select
                 value={dialectHint}
                 onChange={(e) => setDialectHint(e.target.value)}
                 aria-label="Arabic dialect"
-                className="h-9 border-2 border-zinc-950 bg-white px-2 font-mono text-xs font-bold uppercase outline-none focus:bg-zinc-950 focus:text-white"
+                className="h-11 rounded-app border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-accent-500"
               >
                 {DIALECT_OPTIONS.map((d) => (
-                  <option key={d.value} value={d.value}>{d.label}</option>
+                  <option key={d.value} value={d.value}>{d.label} Arabic</option>
                 ))}
               </select>
               <select value={noteFormat} onChange={(e) => setNoteFormat(e.target.value)} aria-label="Note format"
-                className="h-9 border-2 border-zinc-950 bg-white px-2 font-mono text-xs font-bold uppercase outline-none focus:bg-zinc-950 focus:text-white">
+                className="h-11 rounded-app border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-accent-500">
                 <option value="SOAP">SOAP</option>
                 <option value="focused_soap">Focused SOAP</option>
                 <option value="arabic_english_hybrid">Arabic-English</option>
@@ -943,8 +943,106 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   Generate a SOAP note from the transcript.
                 </p>
               )}
+              {/* Physician review — inline after SOAP note */}
+              {result && (
+                <section ref={physicianReviewRef} className="mt-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold uppercase text-zinc-950">Physician Review</h3>
+                    {reviewPrompts.length > 0 && (
+                      <span className="text-xs text-zinc-400">{answeredPromptCount} of {reviewPrompts.length} answered</span>
+                    )}
+                  </div>
+
+                  {currentPrompt ? (
+                    <article className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                      <div className="mb-2 flex items-center gap-2">
+                        {currentPrompt.priority && (
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                            currentPrompt.priority === "critical" ? "bg-red-100 text-red-700"
+                            : currentPrompt.priority === "high" ? "bg-amber-200 text-amber-800"
+                            : "bg-zinc-100 text-zinc-500"
+                          }`}>{currentPrompt.priority}</span>
+                        )}
+                        {currentPrompt.title && (
+                          <p className="text-xs font-semibold uppercase text-amber-800">{currentPrompt.title}</p>
+                        )}
+                      </div>
+                      <p className="text-[15px] font-medium leading-7 text-zinc-950">
+                        {currentPrompt.question}
+                      </p>
+                      {currentPrompt.reason && (
+                        <p className="mt-2 text-sm leading-6 text-zinc-500">{currentPrompt.reason}</p>
+                      )}
+
+                      {currentPrompt.options.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          {currentPrompt.options.map((option) => (
+                            <button
+                              key={`${currentPrompt.id}-${option.value}`}
+                              type="button"
+                              onClick={() => handlePromptAnswer(currentPrompt, option)}
+                              className="group flex min-h-[44px] w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-accent-500 hover:bg-accent-50 hover:text-accent-700"
+                            >
+                              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 border-zinc-300 group-hover:border-accent-500">
+                                <span className="h-2 w-2 rounded-full bg-transparent group-hover:bg-accent-500" />
+                              </span>
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          value={promptInputs[currentPrompt.id] ?? ""}
+                          onChange={(e) => setPromptInputs((prev) => ({ ...prev, [currentPrompt.id]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              const text = promptInputs[currentPrompt.id]?.trim();
+                              if (text) handlePromptAnswer(currentPrompt, { text });
+                            }
+                          }}
+                          className="min-h-[44px] min-w-0 flex-1 rounded-app border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-950"
+                          placeholder="Or type a correction…"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const text = promptInputs[currentPrompt.id]?.trim();
+                            if (text) handlePromptAnswer(currentPrompt, { text });
+                          }}
+                          disabled={!promptInputs[currentPrompt.id]?.trim()}
+                          className="min-h-[44px] rounded-app bg-zinc-950 px-4 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </article>
+                  ) : reviewPrompts.length > 0 ? (
+                    <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+                      <p className="text-sm leading-6 text-emerald-800">
+                        All review questions answered. Ready for final physician sign-off.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {answeredPromptCount > 0 && (
+                    <div className="space-y-2">
+                      {reviewPrompts.filter((p) => promptAnswers[p.id]).map((p) => (
+                        <div key={p.id} className="border-l-2 border-emerald-400 pl-3">
+                          <p className="text-xs font-medium uppercase text-zinc-400">Answered</p>
+                          <p className="mt-1 text-sm text-zinc-700">{promptAnswers[p.id]}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+
               {result && soapSections.length > 0 && (
-                <div className="mt-4 flex justify-end">
+                <div className="mt-6 flex justify-end">
                   <Link
                     href={routes.finalReview(encounterId)}
                     className="inline-flex h-11 items-center gap-2 rounded-app bg-zinc-950 px-4 text-sm font-medium text-white hover:bg-accent-600"
@@ -959,174 +1057,66 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           </div>
 
           {/* Right: Clinical Copilot */}
-          <aside className={`flex flex-col min-h-0 border-l-2 border-zinc-950 bg-white ${mobilePanel === "copilot" ? "flex" : "hidden lg:flex"}`}>
+          <aside className={`flex flex-col min-h-0 bg-white ${mobilePanel === "copilot" ? "flex" : "hidden lg:flex"}`}>
 
-            <header className="flex-shrink-0 border-b-2 border-zinc-950 bg-zinc-950 px-5 py-3">
-              <div className="flex items-center justify-between gap-3">
+            <header className="flex-shrink-0 border-b border-zinc-200 px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Clinical Copilot</p>
-                  <h2 className="mt-0.5 font-mono text-sm font-bold text-white">
-                    {result ? "Draft ready — physician review" : "Awaiting note"}
-                  </h2>
+                  <h2 className="text-lg font-medium text-zinc-950">Clinical Copilot</h2>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {result ? "Ask about this note, run tools, or check for risks" : "Generate a note first, then ask questions"} · {patientRecordNumber}
+                  </p>
                 </div>
-                {isSubmitting ? <SignalTrace /> : <MessageCircle className="h-4 w-4 text-zinc-400" />}
+                {isSubmitting ? <SignalTrace /> : <MessageCircle className="h-5 w-5 text-accent-500" />}
               </div>
             </header>
 
-            {/* Single scrollable body — physician review + messages */}
-            <div ref={chatScrollRef} className="messages-scroller flex-1 min-h-0 overflow-y-auto px-5 pt-5 pb-4 space-y-6">
-
-                {/* Physician prompts */}
-                <section ref={physicianReviewRef}>
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Physician review</p>
-                    {reviewPrompts.length > 0 && (
-                      <span className="font-mono text-[10px] text-zinc-500">{answeredPromptCount}/{reviewPrompts.length}</span>
-                    )}
-                  </div>
-
-                  {currentPrompt ? (
-                    <article className="border-2 border-zinc-950 bg-white p-4">
-                      {currentPrompt.priority && (
-                        <span className={`inline-block px-2 py-0.5 font-mono text-[10px] font-bold uppercase mb-2 ${
-                          currentPrompt.priority === "critical" ? "bg-zinc-950 text-white"
-                          : currentPrompt.priority === "high" ? "bg-zinc-200 text-zinc-950"
-                          : "border border-zinc-300 text-zinc-500"
-                        }`}>{currentPrompt.priority}</span>
-                      )}
-                      {currentPrompt.title && (
-                        <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">{currentPrompt.title}</p>
-                      )}
-                      <p className="text-sm font-medium leading-6 text-zinc-950">
-                        {currentPrompt.question}
-                      </p>
-                      {currentPrompt.reason && (
-                        <p className="mt-2 text-xs leading-5 text-zinc-500">{currentPrompt.reason}</p>
-                      )}
-
-                      {/* Multiple choice options */}
-                      {currentPrompt.options.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          {currentPrompt.options.map((option) => (
-                            <button
-                              key={`${currentPrompt.id}-${option.value}`}
-                              type="button"
-                              onClick={() => handlePromptAnswer(currentPrompt, option)}
-                              className="flex min-h-[40px] w-full items-center gap-3 border border-zinc-200 px-3 py-2 text-left font-mono text-xs font-bold uppercase tracking-wide text-zinc-700 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white"
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Free text input */}
-                      <div className="mt-3 flex gap-2">
-                        <input
-                          value={promptInputs[currentPrompt.id] ?? ""}
-                          onChange={(e) => setPromptInputs((prev) => ({ ...prev, [currentPrompt.id]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              const text = promptInputs[currentPrompt.id]?.trim();
-                              if (text) handlePromptAnswer(currentPrompt, { text });
-                            }
-                          }}
-                          className="min-h-[40px] min-w-0 flex-1 border-2 border-zinc-950 bg-white px-3 py-2 font-mono text-xs outline-none placeholder:text-zinc-400"
-                          placeholder="Or type a correction…"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const text = promptInputs[currentPrompt.id]?.trim();
-                            if (text) handlePromptAnswer(currentPrompt, { text });
-                          }}
-                          disabled={!promptInputs[currentPrompt.id]?.trim()}
-                          className="min-h-[40px] border-2 border-zinc-950 bg-zinc-950 px-3 font-mono text-xs font-bold uppercase tracking-widest text-white hover:bg-white hover:text-zinc-950 disabled:opacity-40"
-                        >
-                          Save
-                        </button>
-                      </div>
-                    </article>
-                  ) : result && reviewPrompts.length > 0 ? (
-                    <div className="flex items-start gap-2 border-2 border-zinc-950 bg-zinc-950 p-4">
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-white" />
-                      <p className="font-mono text-xs font-bold uppercase tracking-wide text-white">
-                        Review complete. Ready for final physician review.
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="border border-zinc-200 p-4 font-mono text-xs text-zinc-500">
-                      Review questions will appear after note generation.
+            {/* Chat messages */}
+            <div ref={chatScrollRef} className="messages-scroller flex-1 min-h-0 overflow-y-auto px-5 pt-5 pb-4 space-y-4">
+              {chatMessages.map((message) => {
+                const isPhysician = message.role === "physician";
+                const isAssistant = message.role === "assistant";
+                return (
+                  <article key={message.id} className={isPhysician ? "flex flex-col items-end" : "flex flex-col items-start"}>
+                    <p className="mb-1 text-xs font-medium text-zinc-400">
+                      {isPhysician ? "You" : "Copilot"} · {message.createdAt}
                     </p>
-                  )}
-
-                  {answeredPromptCount > 0 && (
-                    <div className="mt-4 space-y-2">
-                      {reviewPrompts.filter((p) => promptAnswers[p.id]).map((p) => (
-                        <div key={p.id} className="border-l-2 border-zinc-950 pl-3">
-                          <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Answered</p>
-                          <p className="mt-1 text-xs text-zinc-700">{promptAnswers[p.id]}</p>
-                        </div>
-                      ))}
+                    <div className={`max-w-[88%] rounded-xl px-4 py-3 text-sm leading-6 ${
+                      isPhysician
+                        ? "bg-accent-500 text-white"
+                        : "border border-zinc-200 bg-white text-zinc-800 shadow-sm"
+                    }`}>
+                      <p className="whitespace-pre-wrap">{message.content}</p>
                     </div>
-                  )}
-                </section>
-
-                {/* Messages */}
-                <section className="border-t-2 border-zinc-950 pt-5">
-                  <p className="mb-3 font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Chat</p>
-                  <div className="space-y-3">
-                    {chatMessages.map((message) => {
-                      const isPhysician = message.role === "physician";
-                      const isAssistant = message.role === "assistant";
-                      const isSystem = message.role === "system" || message.role === "tool";
-                      return (
-                        <article key={message.id} className={isPhysician ? "flex flex-col items-end" : "flex flex-col items-start"}>
-                          <p className="mb-1 font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                            {isPhysician ? "You" : isAssistant ? "Copilot" : "System"} · {message.createdAt}
-                          </p>
-                          <div className={`max-w-[85%] px-3 py-2.5 text-sm leading-6 ${
-                            isPhysician
-                              ? "bg-zinc-950 text-white"
-                              : isSystem
-                              ? "border border-zinc-200 bg-zinc-50 text-zinc-600 font-mono text-xs"
-                              : "border border-zinc-200 bg-white text-zinc-800"
-                          }`}>
-                            <p className="whitespace-pre-wrap">{message.content}</p>
-                          </div>
-                          {message.toolCalls && message.toolCalls.length > 0 && (
-                            <div className="mt-2 w-full space-y-2">
-                              {message.toolCalls.map((tc, i) => (
-                                <ToolCallCard key={`${tc.tool}_${i}`} tc={tc} />
-                              ))}
-                            </div>
-                          )}
-                          {message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {message.suggestedFollowUps.slice(0, 3).map((q) => (
-                                <button
-                                  key={q}
-                                  type="button"
-                                  onClick={() => handleFollowUp(q)}
-                                  className="border border-zinc-300 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-zinc-600 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white"
-                                >
-                                  {q}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
+                    {message.toolCalls && message.toolCalls.length > 0 && (
+                      <div className="mt-2 w-full space-y-2">
+                        {message.toolCalls.map((tc, i) => (
+                          <ToolCallCard key={`${tc.tool}_${i}`} tc={tc} />
+                        ))}
+                      </div>
+                    )}
+                    {message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {message.suggestedFollowUps.slice(0, 3).map((q) => (
+                          <button
+                            key={q}
+                            type="button"
+                            onClick={() => handleFollowUp(q)}
+                            className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 hover:border-accent-500 hover:text-accent-600"
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
             </div>
 
-          {/* Tool quick-access bar */}
-          <div className="flex-shrink-0 border-t-2 border-zinc-950 px-4 py-3">
-            <p className="mb-2 font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-400">Quick tools</p>
-            <div className="grid grid-cols-2 gap-1.5">
+          {/* Tool quick-access */}
+          <div className="flex-shrink-0 border-t border-zinc-100 px-4 py-3">
+            <div className="flex gap-1.5 flex-wrap">
               {toolItems.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -1134,10 +1124,10 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                     key={item.label}
                     type="button"
                     onClick={() => handleFollowUp(item.query)}
-                    className="flex min-h-[40px] items-center gap-2 border border-zinc-200 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wide text-zinc-600 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white"
+                    className="inline-flex items-center gap-1.5 rounded-app border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 hover:border-accent-500 hover:text-accent-600"
                     title={item.label}
                   >
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <Icon className="h-3 w-3 shrink-0" />
                     {item.label}
                   </button>
                 );
@@ -1146,7 +1136,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           </div>
 
           {/* Copilot chat input */}
-          <div className="flex-shrink-0 border-t-2 border-zinc-950 p-4">
+          <div className="flex-shrink-0 border-t border-zinc-200 p-4">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -1160,13 +1150,13 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               <input
                 value={copilotInput}
                 onChange={(e) => setCopilotInput(e.target.value)}
-                placeholder="Ask the copilot..."
-                className="min-h-[40px] min-w-0 flex-1 border-2 border-zinc-950 bg-white px-3 font-mono text-sm outline-none placeholder:text-zinc-400 focus:bg-zinc-50"
+                placeholder="Ask about this note…"
+                className="min-h-[44px] min-w-0 flex-1 rounded-app border border-zinc-200 px-3 text-sm outline-none placeholder:text-zinc-400 focus:border-accent-500"
               />
               <button
                 type="submit"
                 disabled={!copilotInput.trim()}
-                className="min-h-[40px] border-2 border-zinc-950 bg-zinc-950 px-4 font-mono text-xs font-bold uppercase tracking-widest text-white hover:bg-white hover:text-zinc-950 disabled:opacity-40"
+                className="min-h-[44px] rounded-app bg-accent-500 px-4 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
               >
                 Send
               </button>
