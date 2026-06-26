@@ -6,12 +6,10 @@ import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
-  BookOpen,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  CircleHelp,
   ClipboardList,
   FileText,
   ListChecks,
@@ -19,8 +17,8 @@ import {
   MessageCircle,
   Mic,
   Paperclip,
-  ScrollText,
-  Settings,
+  Pause,
+  Play,
   ShieldAlert,
   Square,
   Wrench,
@@ -34,7 +32,6 @@ import {
   type ScribeSourceMode
 } from "@/lib/api/scribe";
 import { sendPhysicianPromptGhost } from "@/lib/api/physician-prompts";
-import { createEncounter } from "@/lib/api/encounters";
 import { sendCopilotMessage, type CopilotToolCallResult } from "@/lib/api/copilot";
 import { routes } from "@/lib/constants/routes";
 import {
@@ -112,8 +109,6 @@ const PIPELINE_STEP_DEFS: { name: string; label: string }[] = [
   { name: "claim_evaluation", label: "Claim evidence" }
 ];
 
-const STEP_DELAYS_MS = [0, 5000, 12000, 20000];
-
 const SUPPORTED_AUDIO_TYPES = new Set([
   "audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav",
   "audio/m4a", "audio/x-m4a", "audio/mp4", "video/mp4",
@@ -122,11 +117,223 @@ const SUPPORTED_AUDIO_TYPES = new Set([
 const MAX_AUDIO_FILE_SIZE = 200 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = ["mp3", "wav", "m4a", "mp4", "aac", "ogg", "webm", "flac"];
 
-const DIALECT_OPTIONS = [
-  { value: "gulf", label: "Gulf" },
-  { value: "levantine", label: "Levantine" },
-  { value: "egyptian", label: "Egyptian" },
-  { value: "msa", label: "MSA" },
+type DemoConfig = {
+  key: string;
+  label: string;
+  dialect: string;
+  file: string;
+  fakeResult: ScribeResponse;
+};
+
+const DEMO_CONFIGS: DemoConfig[] = [
+  {
+    key: "haytham_ahmed_32_egy",
+    label: "Haytham, 32 — Egyptian",
+    dialect: "egyptian",
+    file: "haytham_ahmed_32_egy.mp3",
+    fakeResult: {
+      transcription: "دكتور عندي كحة وزكام من أمس وعندي حرارة شوية وصداع في راسي وتعب عام",
+      translation: "Doctor, I have a cough and cold since yesterday, some fever, headache, and general fatigue.",
+      soap_note: {
+        sections: {
+          subjective: "32-year-old male presents with cough, rhinorrhea, low-grade fever, headache, and general malaise onset yesterday. No chest pain or dyspnea reported.",
+          objective: "Vitals pending. Patient appears mildly unwell. No respiratory distress observed.",
+          assessment: "Upper respiratory tract infection (URI), likely viral aetiology. Differential includes influenza.",
+          plan: "Supportive care: rest, adequate hydration, antipyretics PRN. Advise return if fever exceeds 39°C or symptoms worsen after 5 days. No antibiotic indicated at this stage."
+        }
+      },
+      uncertain_words: [
+        { text: "كحة", risk: "medium", possible_meanings: ["dry cough", "productive cough"], reason: "Severity and character unspecified" },
+        { text: "حرارة شوية", risk: "medium", possible_meanings: ["low-grade fever (<38.5°C)", "high fever"], reason: "Temperature value not stated" }
+      ],
+      physician_prompts: [
+        { id: "p1", type: "single_choice", title: "Cough character", question: "Is the cough dry or productive?", options: [{ label: "Dry", value: "dry" }, { label: "Productive — clear", value: "productive_clear" }, { label: "Productive — coloured", value: "productive_coloured" }] }
+      ],
+      pipeline: { total_ms: 18200, fanar_calls: 4, fallback_calls: 0 }
+    } as unknown as ScribeResponse
+  },
+  {
+    key: "abdullah2_58s_saudi",
+    label: "Abdullah, 58 — Saudi Gulf",
+    dialect: "gulf",
+    file: "abdullah2_58s_saudi.mp3",
+    fakeResult: {
+      transcription: "يا دكتور أنا مريض سكري وضغط من عشر سنين، الحين السكر مو متحكم فيه، وعندي ألم في رجلي من تحت وخاصة بالليل",
+      translation: "Doctor, I have diabetes and hypertension for ten years. My sugar is not controlled right now, and I have pain in my lower legs especially at night.",
+      soap_note: {
+        sections: {
+          subjective: "58-year-old male with 10-year history of type 2 diabetes mellitus and hypertension. Reports poor glycaemic control and bilateral lower limb pain, predominantly nocturnal. Suggests possible peripheral neuropathy.",
+          objective: "Current medications and recent HbA1c not provided. Lower limb neurological exam pending.",
+          assessment: "Type 2 diabetes mellitus — poorly controlled. Probable diabetic peripheral neuropathy. Hypertension — control status unclear.",
+          plan: "Review HbA1c and fasting glucose. Assess current antidiabetic regimen for dose optimisation. Neuropathy workup: monofilament test, nerve conduction if indicated. Initiate neuropathic pain management if confirmed (e.g. gabapentin or pregabalin). BP review at next visit."
+        }
+      },
+      uncertain_words: [
+        { text: "مو متحكم", risk: "high", possible_meanings: ["HbA1c >8%", "uncontrolled fasting glucose", "subjective feeling"], reason: "No lab values provided" },
+        { text: "ألم في رجلي من تحت", risk: "high", possible_meanings: ["peripheral neuropathy", "peripheral vascular disease", "musculoskeletal"], reason: "Requires examination to differentiate" }
+      ],
+      physician_prompts: [
+        { id: "p1", type: "single_choice", title: "Last HbA1c", question: "What was the most recent HbA1c result?", options: [{ label: "Below 7%", value: "below7" }, { label: "7–8%", value: "7to8" }, { label: "Above 8%", value: "above8" }, { label: "Not available", value: "na" }] }
+      ],
+      pipeline: { total_ms: 19400, fanar_calls: 4, fallback_calls: 0 }
+    } as unknown as ScribeResponse
+  },
+  {
+    key: "farah_leila_43_jor_syr",
+    label: "Farah & Leila, 43 — Levantine",
+    dialect: "levantine",
+    file: "farah_leila_43_jor_syr.mp3",
+    fakeResult: {
+      transcription: "دكتورة رح أحكيلك، عندي صداع مزمن من شهرين، وتعب وإرهاق كتير، وأحياناً دوخة وما بقدر أنام منيح",
+      translation: "Doctor, I'll tell you — I have had chronic headaches for two months, a lot of fatigue and exhaustion, sometimes dizziness, and I cannot sleep well.",
+      soap_note: {
+        sections: {
+          subjective: "43-year-old female reports 2-month history of chronic headaches, significant fatigue and exhaustion, intermittent dizziness, and insomnia. No reported trauma or focal neurological symptoms.",
+          objective: "Neurological exam and vital signs pending. Thyroid status unknown.",
+          assessment: "Chronic headache syndrome — tension-type most likely; migraine to exclude. Fatigue and insomnia: consider anaemia, hypothyroidism, depression, or sleep disorder.",
+          plan: "Full blood count, thyroid function tests, iron studies, and fasting glucose. PHQ-9 screening for depression. Sleep hygiene counselling. Headache diary. Follow-up in 2 weeks with results."
+        }
+      },
+      uncertain_words: [
+        { text: "تعب وإرهاق", risk: "medium", possible_meanings: ["physical fatigue", "emotional exhaustion", "anaemia-related"], reason: "Broad symptom — requires differentials" },
+        { text: "دوخة", risk: "medium", possible_meanings: ["vertigo", "presyncope", "lightheadedness"], reason: "Character of dizziness unspecified" }
+      ],
+      physician_prompts: [
+        { id: "p1", type: "single_choice", title: "Headache location", question: "Where is the headache located?", options: [{ label: "Bilateral — pressure-like", value: "bilateral" }, { label: "Unilateral — throbbing", value: "unilateral" }, { label: "Occipital", value: "occipital" }] }
+      ],
+      pipeline: { total_ms: 20100, fanar_calls: 4, fallback_calls: 0 }
+    } as unknown as ScribeResponse
+  },
+  {
+    key: "hasawi_abdullah_50_saudi",
+    label: "Hasawi Abdullah, 50 — Saudi (Hasawi)",
+    dialect: "gulf",
+    file: "hasawi_abdullah_50_saudi.mp3",
+    fakeResult: {
+      transcription: "يا طبيب عندي وجع في مفاصلي من كثر، الركبة والكاحل يوجعونني خاصة الصبح لما أقوم، وأحياناً تتورم",
+      translation: "Doctor, I have had joint pain for a while — my knee and ankle hurt especially in the morning when I get up, and they sometimes swell.",
+      soap_note: {
+        sections: {
+          subjective: "50-year-old male presents with bilateral joint pain affecting knees and ankles, worse in the morning with associated intermittent swelling. Morning stiffness pattern suggests inflammatory aetiology.",
+          objective: "Joint examination pending. No current medications listed.",
+          assessment: "Inflammatory arthropathy — rheumatoid arthritis vs. seronegative arthritis (e.g. psoriatic, reactive). Osteoarthritis less likely given bilateral ankle involvement and morning stiffness pattern.",
+          plan: "ESR, CRP, RF, anti-CCP, uric acid, ANA. X-rays of knees and ankles. Rheumatology referral if inflammatory markers elevated. NSAIDs for symptom relief if no contraindication."
+        }
+      },
+      uncertain_words: [
+        { text: "من كثر", risk: "low", possible_meanings: ["for a long time (months)", "recently worsened"], reason: "Duration ambiguous in Hasawi dialect" },
+        { text: "تتورم", risk: "high", possible_meanings: ["synovial swelling (inflammatory)", "periarticular oedema", "post-traumatic"], reason: "Swelling character determines management" }
+      ],
+      physician_prompts: [
+        { id: "p1", type: "single_choice", title: "Morning stiffness", question: "How long does morning stiffness last?", options: [{ label: "Under 30 minutes", value: "under30" }, { label: "30–60 minutes", value: "30to60" }, { label: "Over 1 hour", value: "over60" }] }
+      ],
+      pipeline: { total_ms: 17800, fanar_calls: 4, fallback_calls: 0 }
+    } as unknown as ScribeResponse
+  },
+  {
+    key: "haytham_rafoush_71_egy_syr",
+    label: "Haytham Rafoush, 71 — Egyptian + Syrian",
+    dialect: "egyptian",
+    file: "haytham_rafoush_71_egy_syr.mp3",
+    fakeResult: {
+      transcription: "أنا عندي ضيقة في النفس من شوية، بيزيد لما بمشي أو بصعد السلم، ومعايا كحة يابسة، وعمري ٧١ وبدخن من زمان",
+      translation: "I have had shortness of breath for a while. It gets worse when I walk or climb stairs, with a dry cough. I am 71 and have smoked for a long time.",
+      soap_note: {
+        sections: {
+          subjective: "71-year-old male with long-term smoking history presents with progressive exertional dyspnea and chronic dry cough. Symptoms worsen with ambulation and stair climbing. No haemoptysis reported.",
+          objective: "Respiratory exam pending. SpO₂ and spirometry not yet performed.",
+          assessment: "Likely COPD exacerbation or progression given age, smoking history, and exertional dyspnoea pattern. Lung malignancy must be excluded. Heart failure in differential.",
+          plan: "Spirometry with bronchodilator reversibility. Chest X-ray. CT chest if X-ray inconclusive or malignancy suspected. Refer to pulmonology. Advise smoking cessation urgently. Influenza and pneumococcal vaccination status to review."
+        }
+      },
+      uncertain_words: [
+        { text: "ضيقة في النفس", risk: "critical", possible_meanings: ["dyspnoea on exertion (COPD)", "acute heart failure", "pulmonary embolism"], reason: "Critical symptom — aetiology must be determined urgently" },
+        { text: "من شوية", risk: "medium", possible_meanings: ["days", "weeks", "months"], reason: "Chronicity affects urgency and management" }
+      ],
+      physician_prompts: [
+        { id: "p1", type: "single_choice", title: "Dyspnoea onset", question: "How long has the dyspnoea been present?", options: [{ label: "Days (acute)", value: "days" }, { label: "Weeks (subacute)", value: "weeks" }, { label: "Months — progressive", value: "months" }] }
+      ],
+      pipeline: { total_ms: 21300, fanar_calls: 4, fallback_calls: 0 }
+    } as unknown as ScribeResponse
+  },
+  {
+    key: "abdullah_hazem_63_saud_egy",
+    label: "Abdullah & Hazem, 63 — Saudi + Egyptian",
+    dialect: "gulf",
+    file: "abdullah&hazem_63_saud_egy.mp3",
+    fakeResult: {
+      transcription: "دكتور عندي ألم في صدري من أمس، وأحس بثقل على قلبي وضيقة، وأنا عندي ضغط وسكري",
+      translation: "Doctor, I have had chest pain since yesterday with a heavy feeling on my chest and tightness. I have hypertension and diabetes.",
+      soap_note: {
+        sections: {
+          subjective: "63-year-old male with known hypertension and type 2 diabetes presents with chest pain and heaviness onset yesterday. Reports associated chest tightness. No radiation described. Cardiac risk profile elevated.",
+          objective: "ECG, troponin, and vital signs urgently required. Cardiac exam pending.",
+          assessment: "Chest pain in high-risk patient (63M, HTN, DM) — acute coronary syndrome must be excluded urgently. Differential includes GERD, musculoskeletal, or anxiety.",
+          plan: "URGENT: 12-lead ECG immediately. High-sensitivity troponin at 0 and 3 hours. Aspirin 300mg if ACS not excluded. Continuous cardiac monitoring. Cardiology review. NPO pending evaluation."
+        }
+      },
+      uncertain_words: [
+        { text: "ألم في صدري", risk: "critical", possible_meanings: ["angina", "NSTEMI", "GERD", "musculoskeletal"], reason: "In 63-year-old with DM+HTN, ACS must be excluded urgently" },
+        { text: "ثقل على قلبي", risk: "high", possible_meanings: ["pressure sensation (cardiac)", "anxiety", "GERD"], reason: "Pressure-type chest symptoms raise ACS concern" }
+      ],
+      physician_prompts: [
+        { id: "p1", type: "single_choice", title: "Pain radiation", question: "Does the pain radiate to the arm, jaw, or back?", options: [{ label: "Radiates to left arm", value: "left_arm" }, { label: "Radiates to jaw", value: "jaw" }, { label: "No radiation", value: "none" }] }
+      ],
+      pipeline: { total_ms: 19800, fanar_calls: 4, fallback_calls: 0 }
+    } as unknown as ScribeResponse
+  },
+  {
+    key: "jawad_ghazline_67_morocco",
+    label: "Jawad Ghazline, 67 — Moroccan",
+    dialect: "msa",
+    file: "jawad_ghazline_67_morocco.mp3",
+    fakeResult: {
+      transcription: "طبيب، عندي ألم في ظهري من مدة طويلة، وخاصة في الجزء السفلي، وأحياناً يمتد للرجل اليمنى، وعمري سبعة وستين سنة",
+      translation: "Doctor, I have had lower back pain for a long time, and sometimes it extends down to my right leg. I am 67 years old.",
+      soap_note: {
+        sections: {
+          subjective: "67-year-old male with chronic lower back pain extending to the right leg, suggesting possible radiculopathy. Duration described as prolonged. No bladder or bowel symptoms reported.",
+          objective: "Neurological and musculoskeletal examination pending. Gait and straight leg raise test not performed.",
+          assessment: "Lumbar radiculopathy — likely L4/L5 or L5/S1 nerve root. Differential: lumbar stenosis, disc herniation. Osteoporosis risk high given age.",
+          plan: "Lumbar spine X-ray. MRI lumbar spine if neurological signs present. DEXA scan for bone density. Physiotherapy referral. NSAIDs with gastroprotection. Neurosurgery referral if conservative management fails after 6 weeks."
+        }
+      },
+      uncertain_words: [
+        { text: "من مدة طويلة", risk: "medium", possible_meanings: ["months", "years", "chronic (>3 months)"], reason: "Chronicity influences investigation urgency" },
+        { text: "يمتد للرجل اليمنى", risk: "high", possible_meanings: ["true radiculopathy (nerve root)", "referred pain", "vascular claudication"], reason: "Radiation pattern guides diagnosis" }
+      ],
+      physician_prompts: [
+        { id: "p1", type: "single_choice", title: "Pain character", question: "Does the leg pain follow a dermatomal pattern (shooting/electric)?", options: [{ label: "Yes — shooting electric pain", value: "radicular" }, { label: "Diffuse aching", value: "diffuse" }, { label: "Worse on walking only", value: "claudication" }] }
+      ],
+      pipeline: { total_ms: 18600, fanar_calls: 4, fallback_calls: 0 }
+    } as unknown as ScribeResponse
+  },
+  {
+    key: "sarah_ghaida_59_jor_syr",
+    label: "Sarah & Ghaida, 59 — Levantine",
+    dialect: "levantine",
+    file: "sarah_ghaida_59_jor_syr.mp3",
+    fakeResult: {
+      transcription: "دكتورة، أنا عندي حرارة وبرد وتعب شديد، وعندي ألم بالمفاصل وصداع، وعمري تسعة وخمسين سنة",
+      translation: "Doctor, I have fever, chills, severe fatigue, joint pain, and a headache. I am 59 years old.",
+      soap_note: {
+        sections: {
+          subjective: "59-year-old female presents with fever, chills, severe fatigue, polyarthralgia, and headache. Systemic symptoms suggest infectious or inflammatory aetiology.",
+          objective: "Temperature, BP, and systemic examination pending. Lymphadenopathy, rash, and joint swelling not yet assessed.",
+          assessment: "Acute febrile illness with systemic features — viral syndrome most likely (influenza, COVID-19). Connective tissue disease or early sepsis must be considered given polyarthralgia and severity.",
+          plan: "Full blood count, CRP, ESR, blood cultures if febrile >38.5°C. COVID-19 and influenza rapid testing. Rheumatological screen if symptoms persist: ANA, RF, anti-CCP. Supportive care. Empirical antibiotics only if bacterial source identified."
+        }
+      },
+      uncertain_words: [
+        { text: "برد", risk: "medium", possible_meanings: ["chills/rigors (systemic infection)", "common cold", "subjective cold feeling"], reason: "Rigors vs. subjective chills — different clinical significance" },
+        { text: "تعب شديد", risk: "medium", possible_meanings: ["extreme fatigue (sepsis risk)", "moderate malaise (viral)"], reason: "Severity grading affects triage decision" }
+      ],
+      physician_prompts: [
+        { id: "p1", type: "single_choice", title: "Fever severity", question: "What is the measured temperature?", options: [{ label: "Under 38°C", value: "low" }, { label: "38–39°C", value: "moderate" }, { label: "Above 39°C", value: "high" }] }
+      ],
+      pipeline: { total_ms: 20400, fanar_calls: 4, fallback_calls: 0 }
+    } as unknown as ScribeResponse
+  },
 ];
 
 const toolItems = [
@@ -334,8 +541,13 @@ function HighlightedTranscript({ text, words }: { text: string; words: Uncertain
           ? `Possible: ${word.possible_meanings.join(" · ")}`
           : word.reason ?? "";
         return (
-          <span key={i} className="rounded-app px-1 cursor-help" style={UNCERTAIN_HIGHLIGHT} title={title}>
+          <span key={i} className="relative group/uw inline-block cursor-help rounded-app px-1" style={UNCERTAIN_HIGHLIGHT}>
             {part}
+            {title && (
+              <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 w-52 rounded-lg border border-accent-200 bg-white p-2 text-xs leading-5 text-zinc-700 shadow-lg opacity-0 transition-opacity duration-150 group-hover/uw:opacity-100 whitespace-normal">
+                {title}
+              </span>
+            )}
           </span>
         );
       })}
@@ -496,8 +708,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [inputMode, setInputMode] = useState<InputMode>("manual");
   const [copilotInput, setCopilotInput] = useState("");
   const [patientRecordNumber] = useState("P023");
-  const [dialectHint, setDialectHint] = useState("gulf");
-  const [noteFormat, setNoteFormat] = useState("SOAP");
+  const [dialectHint, setDialectHint] = useState("");
+  const [selectedDemo, setSelectedDemo] = useState<string>("");
   const router = useRouter();
   const [manualTranscript, setManualTranscript] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -519,13 +731,20 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [promptAnswers, setPromptAnswers] = useState<Record<string, string>>({});
   const [promptInputs, setPromptInputs] = useState<Record<string, string>>({});
   const [pipelineSteps, setPipelineSteps] = useState<PipelineAnimStep[]>([]);
+  const [inputOpen, setInputOpen] = useState(true);
+  const [outputOpen, setOutputOpen] = useState(true);
+  const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const pipelineTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const physicianReviewRef = useRef<HTMLElement>(null);
+  const physicianReviewRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const transcriptionText = asText(result?.transcription);
   const translationText = asText(result?.translation);
@@ -557,18 +776,53 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [chatMessages]);
 
+  useEffect(() => {
+    if (!audioFile) { setAudioObjectUrl(null); return; }
+    const url = URL.createObjectURL(audioFile);
+    setAudioObjectUrl(url);
+    setAudioPlaying(false);
+    setAudioCurrentTime(0);
+    setAudioDuration(0);
+    return () => URL.revokeObjectURL(url);
+  }, [audioFile]);
+
+  useEffect(() => {
+    if (!selectedDemo) return;
+    const config = DEMO_CONFIGS.find((d) => d.key === selectedDemo);
+    if (!config) return;
+    setDialectHint(config.dialect);
+    setInputMode("upload");
+    setManualTranscript("");
+    setResult(null);
+    setError("");
+    const url = `/demo-audio/${encodeURIComponent(config.file)}`;
+    fetch(url)
+      .then((r) => r.blob())
+      .then((blob) => {
+        const file = new File([blob], config.file, { type: "audio/mpeg" });
+        setAudioFile(file);
+        setRecordingLabel("Demo audio loaded");
+      })
+      .catch(() => setError("Could not load demo audio file."));
+  }, [selectedDemo]);
+
   function startPipelineAnimation() {
     const initial = PIPELINE_STEP_DEFS.map((d) => ({ ...d, status: "pending" as const }));
     setPipelineSteps(initial);
     pipelineTimersRef.current.forEach(clearTimeout);
     pipelineTimersRef.current = [];
 
-    STEP_DELAYS_MS.forEach((delay, i) => {
+    const STEP_MS = 4500;
+    PIPELINE_STEP_DEFS.forEach((_, i) => {
       const t = setTimeout(() => {
         setPipelineSteps((prev) =>
-          prev.map((s, idx) => (idx === i ? { ...s, status: "running" } : s))
+          prev.map((s, idx) =>
+            idx < i ? { ...s, status: "done" as const }
+            : idx === i ? { ...s, status: "running" as const }
+            : s
+          )
         );
-      }, delay);
+      }, i * STEP_MS);
       pipelineTimersRef.current.push(t);
     });
   }
@@ -627,6 +881,28 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     setIsRecording(false);
   }
 
+  function formatTime(s: number) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  function toggleAudio() {
+    const el = audioRef.current;
+    if (!el) return;
+    if (audioPlaying) { el.pause(); setAudioPlaying(false); }
+    else { void el.play(); setAudioPlaying(true); }
+  }
+
+  function stopAudio() {
+    const el = audioRef.current;
+    if (!el) return;
+    el.pause();
+    el.currentTime = 0;
+    setAudioPlaying(false);
+    setAudioCurrentTime(0);
+  }
+
   function addChatMessage(message: Omit<ChatMessage, "id" | "createdAt">) {
     const nextMessage = {
       ...message,
@@ -643,25 +919,72 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     setIsSubmitting(true);
     setStorageStatus("");
     setPipelineSteps([]);
-    startPipelineAnimation();
 
+    const demoConfig = selectedDemo ? DEMO_CONFIGS.find((d) => d.key === selectedDemo) : null;
+
+    if (demoConfig) {
+      // Demo mode: fake 20s pipeline (5s per step) then show canned result
+      const DEMO_STEP_MS = 5000;
+      const initial = PIPELINE_STEP_DEFS.map((d) => ({ ...d, status: "pending" as const }));
+      setPipelineSteps(initial);
+      pipelineTimersRef.current.forEach(clearTimeout);
+      pipelineTimersRef.current = [];
+
+      PIPELINE_STEP_DEFS.forEach((_, i) => {
+        const t = setTimeout(() => {
+          setPipelineSteps((prev) =>
+            prev.map((s, idx) =>
+              idx < i ? { ...s, status: "done" as const }
+              : idx === i ? { ...s, status: "running" as const }
+              : s
+            )
+          );
+        }, i * DEMO_STEP_MS);
+        pipelineTimersRef.current.push(t);
+      });
+
+      const finishTimer = setTimeout(() => {
+        const data = demoConfig.fakeResult;
+        setPipelineSteps(PIPELINE_STEP_DEFS.map((d) => ({ ...d, status: "done" as const,
+          provider: "Fanar", duration_ms: Math.floor(Math.random() * 2000) + 3000 })));
+        setResult(data);
+        setInputOpen(false);
+        setOutputOpen(false);
+        setPromptAnswers({});
+        setPromptInputs({});
+        setStorageStatus("Demo mode — no data sent.");
+        addChatMessage({
+          role: "assistant",
+          content: "Demo note generated. I can help clarify uncertain terms, check for red flags, or answer questions about this consultation."
+        });
+        setIsSubmitting(false);
+      }, PIPELINE_STEP_DEFS.length * DEMO_STEP_MS);
+      pipelineTimersRef.current.push(finishTimer);
+      return;
+    }
+
+    // Real mode
+    startPipelineAnimation();
     const sourceMode: ScribeSourceMode = inputMode === "manual" ? "manual_transcript" : "audio";
     const consultationTime = new Date().toISOString();
 
     try {
+      const effectiveDialect = dialectHint || "gulf";
       const data = await processScribe({
         patientRecordNumber, encounterId, consultationTime, sourceMode,
-        manualTranscript, audioFile, dialectHint, languageHint: "ar",
-        noteFormat, privacyMode: "prototype"
+        manualTranscript, audioFile, dialectHint: effectiveDialect, languageHint: "ar",
+        noteFormat: "SOAP", privacyMode: "prototype"
       });
 
       setResult(data);
       finishPipelineAnimation(data);
+      setInputOpen(false);
+      setOutputOpen(false);
       setPromptAnswers({});
       setPromptInputs({});
 
       const persistence = await saveScribeRun({
-        patientRecordNumber, encounterId, dialectHint, consultationTime, sourceMode,
+        patientRecordNumber, encounterId, dialectHint: effectiveDialect, consultationTime, sourceMode,
         manualTranscript, response: data
       });
       setLastRunId(persistence.runId);
@@ -690,9 +1013,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     const content = answer.label ?? answer.text ?? answer.value ?? "Answered";
     setPromptAnswers((prev) => ({ ...prev, [prompt.id]: content }));
     addChatMessage({ role: "physician", content: `${prompt.question}\n${content}` });
-    requestAnimationFrame(() => {
-      physicianReviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
     try {
       const response: PromptResponse = await respondToPhysicianPrompt({
         requestId: result?.request_id ?? "local_request",
@@ -742,6 +1062,16 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
 
   return (
     <div className="grid h-[calc(100dvh-56px)] overflow-hidden bg-white text-[15px] text-zinc-900">
+      {audioObjectUrl && (
+        <audio
+          ref={audioRef}
+          src={audioObjectUrl}
+          className="sr-only"
+          onTimeUpdate={() => setAudioCurrentTime(audioRef.current?.currentTime ?? 0)}
+          onDurationChange={() => setAudioDuration(audioRef.current?.duration ?? 0)}
+          onEnded={() => { setAudioPlaying(false); setAudioCurrentTime(0); }}
+        />
+      )}
 
       {/* Main content */}
       <main className="flex flex-col h-full min-w-0 bg-white overflow-hidden lg:grid lg:grid-rows-[auto_1fr_auto]">
@@ -756,27 +1086,23 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
             <div className="flex items-center gap-2">
               <div className="relative">
                 <select
-                  value={dialectHint}
-                  onChange={(e) => setDialectHint(e.target.value)}
-                  aria-label="Arabic dialect"
+                  value={selectedDemo}
+                  onChange={(e) => {
+                    setSelectedDemo(e.target.value);
+                    setResult(null);
+                    setPipelineSteps([]);
+                    setStorageStatus("");
+                    setError("");
+                    setPromptAnswers({});
+                    setPromptInputs({});
+                  }}
+                  aria-label="Try demo"
                   className="h-11 appearance-none rounded-app border border-zinc-200 bg-white pl-3 pr-8 text-sm outline-none focus:border-accent-500"
                 >
-                  {DIALECT_OPTIONS.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label} Arabic</option>
+                  <option value="" disabled>Try Demo</option>
+                  {DEMO_CONFIGS.map((d) => (
+                    <option key={d.key} value={d.key}>{d.label}</option>
                   ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-              </div>
-              <div className="relative">
-                <select
-                  value={noteFormat}
-                  onChange={(e) => setNoteFormat(e.target.value)}
-                  aria-label="Note format"
-                  className="h-11 appearance-none rounded-app border border-zinc-200 bg-white pl-3 pr-8 text-sm outline-none focus:border-accent-500"
-                >
-                  <option value="SOAP">SOAP</option>
-                  <option value="focused_soap">Focused SOAP</option>
-                  <option value="arabic_english_hybrid">Arabic-English</option>
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
               </div>
@@ -792,9 +1118,30 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
 
             {/* Transcript form */}
             <form onSubmit={handleSubmit} className="border-b border-zinc-100 pb-6">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-sm font-medium uppercase text-zinc-500">Transcript</h3>
-                <div className="flex items-center gap-1">
+
+              {/* Accordion header */}
+              <button
+                type="button"
+                onClick={() => setInputOpen((o) => !o)}
+                className="mb-3 flex w-full items-center justify-between gap-3 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-medium uppercase text-zinc-500">Transcript</h3>
+                  {!inputOpen && manualTranscript && (
+                    <span className="max-w-[180px] truncate text-xs text-zinc-400 arabic-text" dir="rtl">
+                      {manualTranscript.slice(0, 60)}
+                    </span>
+                  )}
+                  {!inputOpen && audioFile && (
+                    <span className="max-w-[160px] truncate text-xs text-zinc-400">{audioFile.name}</span>
+                  )}
+                </div>
+                <ChevronDown className={`h-4 w-4 flex-shrink-0 text-zinc-400 transition-transform duration-200 ${inputOpen ? "" : "-rotate-90"}`} />
+              </button>
+
+              {/* Collapsible input area */}
+              <div className={`overflow-hidden transition-all duration-300 ${inputOpen ? "max-h-[700px] opacity-100" : "max-h-0 opacity-0"}`}>
+                <div className="mb-3 flex items-center gap-1">
                   <button type="button" onClick={() => setInputMode("manual")}
                     className={`rounded-app px-3 py-2.5 min-h-[44px] text-sm font-medium ${inputMode === "manual" ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"}`}>
                     Text
@@ -823,36 +1170,77 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                       }} />
                   </label>
                 </div>
-              </div>
 
-              {inputMode === "manual" ? (
-                <div>
-                  <textarea
-                    value={manualTranscript}
-                    onChange={(e) => setManualTranscript(e.target.value)}
-                    dir="rtl"
-                    className="arabic-text min-h-36 w-full resize-none rounded-app border border-zinc-200 bg-white p-4 text-base leading-8 text-zinc-950 outline-none placeholder:text-zinc-400 focus:border-zinc-950"
-                    placeholder="اكتب نص الاستشارة هنا..."
-                    required
-                  />
-                  {!manualTranscript && !result && (
-                    <p className="mt-2 text-center text-sm text-zinc-400 py-2">
-                      Type or paste the consultation transcript above, or switch to Record / Upload.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="flex min-h-32 flex-col items-center justify-center rounded-app border border-zinc-200 text-center text-[15px] text-zinc-500">
-                  <div className={`mb-3 h-3 w-3 rounded-full transition-colors ${isRecording ? "bg-accent-500 recording-pulse" : "bg-zinc-300"}`} />
-                  <p className="font-medium text-zinc-950">
-                    {isRecording ? "Recording in progress" : audioFile ? "Audio ready" : "Record or upload audio"}
-                  </p>
-                  <p className="mt-1">{recordingLabel || "Generate when the consultation audio is ready."}</p>
-                  {audioFile?.type === "video/mp4" && (
-                    <p className="mt-3 max-w-xs text-xs text-amber-600">MP4 files contain video — the backend will extract audio for transcription.</p>
-                  )}
-                </div>
-              )}
+                {inputMode === "manual" ? (
+                  <div>
+                    <textarea
+                      value={manualTranscript}
+                      onChange={(e) => setManualTranscript(e.target.value)}
+                      dir="rtl"
+                      className="arabic-text min-h-36 w-full resize-none rounded-app border border-zinc-200 bg-white p-4 text-base leading-8 text-zinc-950 outline-none placeholder:text-zinc-400 focus:border-zinc-950"
+                      placeholder="اكتب نص الاستشارة هنا..."
+                      required
+                    />
+                    {!manualTranscript && !result && (
+                      <p className="mt-2 text-center text-sm text-zinc-400 py-2">
+                        Type or paste the consultation transcript above, or switch to Record / Upload.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex min-h-28 flex-col items-center justify-center rounded-app border border-zinc-200 text-center text-[15px] text-zinc-500">
+                      <div className={`mb-3 h-3 w-3 rounded-full transition-colors ${isRecording ? "bg-accent-500 recording-pulse" : "bg-zinc-300"}`} />
+                      <p className="font-medium text-zinc-950">
+                        {isRecording ? "Recording in progress" : audioFile ? "Audio ready" : "Record or upload audio"}
+                      </p>
+                      <p className="mt-1 text-sm">{recordingLabel || "Generate when the consultation audio is ready."}</p>
+                      {audioFile?.type === "video/mp4" && (
+                        <p className="mt-2 max-w-xs text-xs text-amber-600">MP4 files contain video — the backend will extract audio for transcription.</p>
+                      )}
+                    </div>
+
+                    {/* Audio player — upload mode only */}
+                    {inputMode === "upload" && audioFile && audioObjectUrl && (
+                      <div className="rounded-app border border-zinc-200 bg-zinc-50 px-4 py-3">
+                        <p className="mb-2 truncate text-xs font-medium text-zinc-500">{audioFile.name}</p>
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={toggleAudio}
+                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent-500 text-white hover:bg-accent-600"
+                          >
+                            {audioPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={stopAudio}
+                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-100"
+                          >
+                            <Square className="h-3.5 w-3.5" />
+                          </button>
+                          <input
+                            type="range"
+                            min={0}
+                            max={audioDuration || 1}
+                            value={audioCurrentTime}
+                            step={0.1}
+                            onChange={(e) => {
+                              const t = parseFloat(e.target.value);
+                              setAudioCurrentTime(t);
+                              if (audioRef.current) audioRef.current.currentTime = t;
+                            }}
+                            className="flex-1 accent-[#D20A2E]"
+                          />
+                          <span className="flex-shrink-0 text-xs tabular-nums text-zinc-400">
+                            {formatTime(audioCurrentTime)} / {formatTime(audioDuration)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Pipeline progress (shown during + after processing) */}
               {pipelineSteps.length > 0 && (
@@ -880,44 +1268,60 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 </button>
               </div>
 
-              {/* Output transcript with risk highlights */}
+              {/* Output transcript accordion */}
               {result && (
                 <div className="mt-5 border-t border-zinc-100 pt-5">
-                  <p className="text-sm font-medium text-zinc-950">Output transcript</p>
-                  <div className="arabic-text mt-3 text-lg leading-9 text-zinc-700">
-                    <HighlightedTranscript
-                      text={transcriptionText || manualTranscript}
-                      words={uncertainWords}
-                    />
-                  </div>
-                  {translationText && <p className="mt-4 text-sm leading-6 text-zinc-500">{translationText}</p>}
-                  {uncertainWords.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {uncertainWords.map((w) => (
-                        <span key={w.id ?? w.text} className="relative group/chip">
-                          <span className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                            w.risk === "critical" ? "bg-red-100 text-red-700"
-                            : w.risk === "high" ? "bg-amber-100 text-amber-700"
-                            : "bg-zinc-100 text-zinc-500"
-                          }`}>
-                            <span dir="rtl">{w.text}</span>
-                            {w.risk && <RiskChip risk={w.risk} />}
-                          </span>
-                          {/* Hover card */}
-                          <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-zinc-200 bg-white p-3 shadow-lg opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100">
-                            <div className="mb-1.5 flex items-center gap-2">
-                              <span className="font-bold text-zinc-950 text-sm" dir="rtl">{w.text}</span>
-                              {w.risk && <RiskChip risk={w.risk} />}
-                            </div>
-                            {w.possible_meanings && w.possible_meanings.length > 0 && (
-                              <p className="text-xs leading-5 text-zinc-600">{w.possible_meanings.join(" · ")}</p>
-                            )}
-                            {w.reason && <p className="mt-1 text-xs leading-5 text-zinc-400">{w.reason}</p>}
-                          </div>
+                  <button
+                    type="button"
+                    onClick={() => setOutputOpen((o) => !o)}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-zinc-950">Output transcript</p>
+                      {!outputOpen && transcriptionText && (
+                        <span className="max-w-[200px] truncate text-xs text-zinc-400 arabic-text" dir="rtl">
+                          {transcriptionText.slice(0, 50)}
                         </span>
-                      ))}
+                      )}
                     </div>
-                  )}
+                    <ChevronDown className={`h-4 w-4 flex-shrink-0 text-zinc-400 transition-transform duration-200 ${outputOpen ? "" : "-rotate-90"}`} />
+                  </button>
+
+                  <div className={`overflow-hidden transition-all duration-300 ${outputOpen ? "max-h-[1200px] opacity-100 mt-3" : "max-h-0 opacity-0"}`}>
+                    <div className="arabic-text text-lg leading-9 text-zinc-700">
+                      <HighlightedTranscript
+                        text={transcriptionText || manualTranscript}
+                        words={uncertainWords}
+                      />
+                    </div>
+                    {translationText && <p className="mt-4 text-sm leading-6 text-zinc-500">{translationText}</p>}
+                    {uncertainWords.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {uncertainWords.map((w) => (
+                          <span key={w.id ?? w.text} className="relative group/chip">
+                            <span className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                              w.risk === "critical" ? "bg-red-100 text-red-700"
+                              : w.risk === "high" ? "bg-amber-100 text-amber-700"
+                              : "bg-zinc-100 text-zinc-500"
+                            }`}>
+                              <span dir="rtl">{w.text}</span>
+                              {w.risk && <RiskChip risk={w.risk} />}
+                            </span>
+                            <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-accent-200 bg-white p-3 shadow-lg opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100">
+                              <div className="mb-1.5 flex items-center gap-2">
+                                <span className="font-bold text-zinc-950 text-sm" dir="rtl">{w.text}</span>
+                                {w.risk && <RiskChip risk={w.risk} />}
+                              </div>
+                              {w.possible_meanings && w.possible_meanings.length > 0 && (
+                                <p className="text-xs leading-5 text-zinc-600">{w.possible_meanings.join(" · ")}</p>
+                              )}
+                              {w.reason && <p className="mt-1 text-xs leading-5 text-zinc-400">{w.reason}</p>}
+                            </div>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </form>
@@ -954,104 +1358,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   Generate a SOAP note from the transcript.
                 </p>
               )}
-              {/* Physician review — inline after SOAP note */}
-              {result && (
-                <section ref={physicianReviewRef} className="mt-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold uppercase text-zinc-950">Physician Review</h3>
-                    {reviewPrompts.length > 0 && (
-                      <span className="text-xs text-zinc-400">{answeredPromptCount} of {reviewPrompts.length} answered</span>
-                    )}
-                  </div>
-
-                  {currentPrompt ? (
-                    <article className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                      <div className="mb-2 flex items-center gap-2">
-                        {currentPrompt.priority && (
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                            currentPrompt.priority === "critical" ? "bg-red-100 text-red-700"
-                            : currentPrompt.priority === "high" ? "bg-amber-200 text-amber-800"
-                            : "bg-zinc-100 text-zinc-500"
-                          }`}>{currentPrompt.priority}</span>
-                        )}
-                        {currentPrompt.title && (
-                          <p className="text-xs font-semibold uppercase text-amber-800">{currentPrompt.title}</p>
-                        )}
-                      </div>
-                      <p className="text-[15px] font-medium leading-7 text-zinc-950">
-                        {currentPrompt.question}
-                      </p>
-                      {currentPrompt.reason && (
-                        <p className="mt-2 text-sm leading-6 text-zinc-500">{currentPrompt.reason}</p>
-                      )}
-
-                      {currentPrompt.options.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          {currentPrompt.options.map((option) => (
-                            <button
-                              key={`${currentPrompt.id}-${option.value}`}
-                              type="button"
-                              onClick={() => handlePromptAnswer(currentPrompt, option)}
-                              className="group flex min-h-[44px] w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-accent-500 hover:bg-accent-50 hover:text-accent-700"
-                            >
-                              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 border-zinc-300 group-hover:border-accent-500">
-                                <span className="h-2 w-2 rounded-full bg-transparent group-hover:bg-accent-500" />
-                              </span>
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="mt-3 flex gap-2">
-                        <input
-                          value={promptInputs[currentPrompt.id] ?? ""}
-                          onChange={(e) => setPromptInputs((prev) => ({ ...prev, [currentPrompt.id]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              const text = promptInputs[currentPrompt.id]?.trim();
-                              if (text) handlePromptAnswer(currentPrompt, { text });
-                            }
-                          }}
-                          className="min-h-[44px] min-w-0 flex-1 rounded-app border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-950"
-                          placeholder="Or type a correction…"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const text = promptInputs[currentPrompt.id]?.trim();
-                            if (text) handlePromptAnswer(currentPrompt, { text });
-                          }}
-                          disabled={!promptInputs[currentPrompt.id]?.trim()}
-                          className="min-h-[44px] rounded-app bg-zinc-950 px-4 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
-                        >
-                          Save
-                        </button>
-                      </div>
-                    </article>
-                  ) : reviewPrompts.length > 0 ? (
-                    <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
-                      <p className="text-sm leading-6 text-emerald-800">
-                        All review questions answered. Ready for final physician sign-off.
-                      </p>
-                    </div>
-                  ) : null}
-
-                  {answeredPromptCount > 0 && (
-                    <div className="space-y-2">
-                      {reviewPrompts.filter((p) => promptAnswers[p.id]).map((p) => (
-                        <div key={p.id} className="border-l-2 border-emerald-400 pl-3">
-                          <p className="text-xs font-medium uppercase text-zinc-400">Answered</p>
-                          <p className="mt-1 text-sm text-zinc-700">{promptAnswers[p.id]}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              )}
-
               {result && soapSections.length > 0 && (
                 <div className="mt-6 flex justify-end">
                   <Link
@@ -1081,6 +1387,98 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 {isSubmitting ? <SignalTrace /> : <MessageCircle className="h-5 w-5 text-accent-500" />}
               </div>
             </header>
+
+            {/* Physician Review — shown in right panel after note generation */}
+            {result && (
+              <div ref={physicianReviewRef} className="flex-shrink-0 border-b border-zinc-200 px-5 py-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase text-zinc-950">Physician Review</h3>
+                  {reviewPrompts.length > 0 && answeredPromptCount < reviewPrompts.length && (
+                    <span className="text-xs text-zinc-400">{answeredPromptCount}/{reviewPrompts.length} answered</span>
+                  )}
+                </div>
+
+                {!currentPrompt && reviewPrompts.length > 0 ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <Check className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+                    <p className="text-sm text-emerald-800">All checkpoints resolved ✓</p>
+                  </div>
+                ) : currentPrompt ? (
+                  <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      {currentPrompt.priority && (
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          currentPrompt.priority === "critical" ? "bg-red-100 text-red-700"
+                          : currentPrompt.priority === "high" ? "bg-amber-200 text-amber-800"
+                          : "bg-zinc-100 text-zinc-500"
+                        }`}>{currentPrompt.priority}</span>
+                      )}
+                      {currentPrompt.title && (
+                        <p className="text-xs font-semibold uppercase text-amber-800">{currentPrompt.title}</p>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium leading-6 text-zinc-950">{currentPrompt.question}</p>
+                    {currentPrompt.reason && (
+                      <p className="mt-1 text-xs leading-5 text-zinc-500">{currentPrompt.reason}</p>
+                    )}
+                    {currentPrompt.options.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        {currentPrompt.options.map((option) => (
+                          <button
+                            key={`${currentPrompt.id}-${option.value}`}
+                            type="button"
+                            onClick={() => handlePromptAnswer(currentPrompt, option)}
+                            className="group flex min-h-[40px] w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-accent-500 hover:bg-accent-50 hover:text-accent-700"
+                          >
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 border-zinc-300 group-hover:border-accent-500">
+                              <span className="h-1.5 w-1.5 rounded-full bg-transparent group-hover:bg-accent-500" />
+                            </span>
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        value={promptInputs[currentPrompt.id] ?? ""}
+                        onChange={(e) => setPromptInputs((prev) => ({ ...prev, [currentPrompt.id]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            const text = promptInputs[currentPrompt.id]?.trim();
+                            if (text) handlePromptAnswer(currentPrompt, { text });
+                          }
+                        }}
+                        className="min-h-[40px] min-w-0 flex-1 rounded-app border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-950"
+                        placeholder="Or type a correction…"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const text = promptInputs[currentPrompt.id]?.trim();
+                          if (text) handlePromptAnswer(currentPrompt, { text });
+                        }}
+                        disabled={!promptInputs[currentPrompt.id]?.trim()}
+                        className="min-h-[40px] rounded-app bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </article>
+                ) : null}
+
+                {answeredPromptCount > 0 && (
+                  <div className="space-y-1.5">
+                    {reviewPrompts.filter((p) => promptAnswers[p.id]).map((p) => (
+                      <div key={p.id} className="border-l-2 border-emerald-400 pl-3">
+                        <p className="text-[10px] font-medium uppercase text-zinc-400">Answered</p>
+                        <p className="text-xs text-zinc-700">{promptAnswers[p.id]}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Chat messages */}
             <div ref={chatScrollRef} className="messages-scroller flex-1 min-h-0 overflow-y-auto px-5 pt-5 pb-4 space-y-4">

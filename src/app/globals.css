@@ -10,8 +10,8 @@
   --foreground: #18181b;
   --muted: #64748b;
   --line: #e5e7eb;
-  --accent: #fa2a55;
-  --accent-strong: #e31845;
+  --accent: #D20A2E;
+  --accent-strong: #A8071F;
   --radius: 8px;
 }
 
@@ -34,7 +34,7 @@ body {
 
 body::selection {
   color: #18181b;
-  background: rgba(250, 42, 85, 0.18);
+  background: rgba(210, 10, 46, 0.15);
 }
 
 a {
@@ -103,7 +103,7 @@ select {
 }
 
 .bitmap-trace {
-  background-image: radial-gradient(circle, rgba(250, 42, 85, 0.16) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(210, 10, 46, 0.14) 1px, transparent 1px);
   background-size: 10px 10px;
 }
 
@@ -151,10 +151,10 @@ select {
 /* Pulsing red ring on the recording dot while actively recording */
 @keyframes recording-ring {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(250, 42, 85, 0.6);
+    box-shadow: 0 0 0 0 rgba(210, 10, 46, 0.6);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(250, 42, 85, 0);
+    box-shadow: 0 0 0 6px rgba(210, 10, 46, 0);
   }
 }
 
@@ -194,11 +194,11 @@ select {
 .pixel-generating {
   background: linear-gradient(
     90deg,
-    #e31845 0%,
-    #fa2a55 40%,
-    #fb6b8a 50%,
-    #fa2a55 60%,
-    #e31845 100%
+    #A8071F 0%,
+    #D20A2E 40%,
+    #e84062 50%,
+    #D20A2E 60%,
+    #A8071F 100%
   );
   background-size: 200% auto;
   animation: pixel-shimmer 1.4s linear infinite;
