@@ -2,15 +2,15 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   ClipboardList,
+  Clipboard,
+  Download,
   FileText,
   ListChecks,
   LoaderCircle,
@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   Square,
   Wrench,
+  X,
   Zap
 } from "lucide-react";
 import {
@@ -128,7 +129,7 @@ type DemoConfig = {
 const DEMO_CONFIGS: DemoConfig[] = [
   {
     key: "haytham_ahmed_32_egy",
-    label: "Haytham, 32 — Egyptian",
+    label: "🇪🇬 Egyptian",
     dialect: "egyptian",
     file: "haytham_ahmed_32_egy.mp3",
     fakeResult: {
@@ -154,7 +155,7 @@ const DEMO_CONFIGS: DemoConfig[] = [
   },
   {
     key: "abdullah2_58s_saudi",
-    label: "Abdullah, 58 — Saudi Gulf",
+    label: "🇸🇦 Gulf",
     dialect: "gulf",
     file: "abdullah2_58s_saudi.mp3",
     fakeResult: {
@@ -180,7 +181,7 @@ const DEMO_CONFIGS: DemoConfig[] = [
   },
   {
     key: "farah_leila_43_jor_syr",
-    label: "Farah & Leila, 43 — Levantine",
+    label: "🇸🇾 Levantine",
     dialect: "levantine",
     file: "farah_leila_43_jor_syr.mp3",
     fakeResult: {
@@ -206,7 +207,7 @@ const DEMO_CONFIGS: DemoConfig[] = [
   },
   {
     key: "hasawi_abdullah_50_saudi",
-    label: "Hasawi Abdullah, 50 — Saudi (Hasawi)",
+    label: "🇸🇦 Hasawi Gulf",
     dialect: "gulf",
     file: "hasawi_abdullah_50_saudi.mp3",
     fakeResult: {
@@ -232,7 +233,7 @@ const DEMO_CONFIGS: DemoConfig[] = [
   },
   {
     key: "haytham_rafoush_71_egy_syr",
-    label: "Haytham Rafoush, 71 — Egyptian + Syrian",
+    label: "🇸🇾 Egy · Syr",
     dialect: "egyptian",
     file: "haytham_rafoush_71_egy_syr.mp3",
     fakeResult: {
@@ -258,7 +259,7 @@ const DEMO_CONFIGS: DemoConfig[] = [
   },
   {
     key: "abdullah_hazem_63_saud_egy",
-    label: "Abdullah & Hazem, 63 — Saudi + Egyptian",
+    label: "🇪🇬 Gulf · Egy",
     dialect: "gulf",
     file: "abdullah&hazem_63_saud_egy.mp3",
     fakeResult: {
@@ -284,7 +285,7 @@ const DEMO_CONFIGS: DemoConfig[] = [
   },
   {
     key: "jawad_ghazline_67_morocco",
-    label: "Jawad Ghazline, 67 — Moroccan",
+    label: "🇲🇦 Moroccan",
     dialect: "msa",
     file: "jawad_ghazline_67_morocco.mp3",
     fakeResult: {
@@ -310,7 +311,7 @@ const DEMO_CONFIGS: DemoConfig[] = [
   },
   {
     key: "sarah_ghaida_59_jor_syr",
-    label: "Sarah & Ghaida, 59 — Levantine",
+    label: "🇸🇾 Levantine · F",
     dialect: "levantine",
     file: "sarah_ghaida_59_jor_syr.mp3",
     fakeResult: {
@@ -725,7 +726,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingLabel, setRecordingLabel] = useState("");
   const [storageStatus, setStorageStatus] = useState("");
   const [lastRunId, setLastRunId] = useState<string | undefined>();
   const [promptAnswers, setPromptAnswers] = useState<Record<string, string>>({});
@@ -737,10 +737,15 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [editedSections, setEditedSections] = useState<Record<string, string>>({});
+  const [cernerSent, setCernerSent] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pipelineTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const physicianReviewRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -787,6 +792,42 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   }, [audioFile]);
 
   useEffect(() => {
+    if (soapSections.length === 0) return;
+    const initial: Record<string, string> = {};
+    soapSections.forEach((s) => { initial[s.title] = s.body; });
+    setEditedSections(initial);
+  }, [soapSections]);
+
+  function getNoteText() {
+    return soapSections
+      .map((s) => `${s.title.toUpperCase()}\n${editedSections[s.title] ?? s.body}`)
+      .join("\n\n");
+  }
+
+  function copyNote() {
+    void navigator.clipboard.writeText(getNoteText()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function downloadAsPdf() {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    const sections = soapSections
+      .map((s) => `<div class="section"><h2>${s.title}</h2><p>${(editedSections[s.title] ?? s.body).replace(/\n/g, "<br>")}</p></div>`)
+      .join("");
+    w.document.write(`<!DOCTYPE html><html><head><title>Sajil Note — ${encounterId}</title><style>body{font-family:Georgia,serif;max-width:760px;margin:48px auto;padding:0 24px;color:#111}.meta{font-size:12px;color:#888;margin-bottom:32px}h1{font-size:20px;margin-bottom:4px}.section{margin-bottom:28px}h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#555;border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:10px}p{font-size:14px;line-height:1.9;margin:0}@media print{body{margin:0}}</style></head><body><h1>Clinical Note</h1><p class="meta">Patient: ${patientRecordNumber} · Encounter: ${encounterId} · Sajil</p>${sections}</body></html>`);
+    w.document.close();
+    w.print();
+  }
+
+  function sendToCerner() {
+    setCernerSent(true);
+    setTimeout(() => setCernerSent(false), 3000);
+  }
+
+  useEffect(() => {
     if (!selectedDemo) return;
     const config = DEMO_CONFIGS.find((d) => d.key === selectedDemo);
     if (!config) return;
@@ -801,7 +842,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       .then((blob) => {
         const file = new File([blob], config.file, { type: "audio/mpeg" });
         setAudioFile(file);
-        setRecordingLabel("Demo audio loaded");
       })
       .catch(() => setError("Could not load demo audio file."));
   }, [selectedDemo]);
@@ -864,13 +904,13 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
         const file = new File([blob], `sajil-${Date.now()}.webm`, { type: blob.type || "audio/webm" });
         setAudioFile(file);
-        setRecordingLabel("Recording ready");
         mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
       };
       recorder.start();
       setInputMode("record");
       setIsRecording(true);
-      setRecordingLabel("Listening");
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
     } catch {
       setError("Microphone permission was blocked or unavailable.");
     }
@@ -879,6 +919,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   function stopRecording() {
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
   }
 
   function formatTime(s: number) {
@@ -953,10 +994,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         setPromptAnswers({});
         setPromptInputs({});
         setStorageStatus("Demo mode — no data sent.");
-        addChatMessage({
-          role: "assistant",
-          content: "Demo note generated. I can help clarify uncertain terms, check for red flags, or answer questions about this consultation."
-        });
+        addChatMessage({ role: "assistant", content: "Note ready." });
         setIsSubmitting(false);
       }, PIPELINE_STEP_DEFS.length * DEMO_STEP_MS);
       pipelineTimersRef.current.push(finishTimer);
@@ -1077,37 +1115,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       <main className="flex flex-col h-full min-w-0 bg-white overflow-hidden lg:grid lg:grid-rows-[auto_1fr_auto]">
 
         {/* Patient context header */}
-        <section className="flex-shrink-0 border-b border-zinc-200 px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase text-zinc-400">Patient Context</p>
-              <h2 className="mt-1 text-xl font-medium text-zinc-950 truncate">{patientRecordNumber} / {encounterId}</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <select
-                  value={selectedDemo}
-                  onChange={(e) => {
-                    setSelectedDemo(e.target.value);
-                    setResult(null);
-                    setPipelineSteps([]);
-                    setStorageStatus("");
-                    setError("");
-                    setPromptAnswers({});
-                    setPromptInputs({});
-                  }}
-                  aria-label="Try demo"
-                  className="h-11 appearance-none rounded-app border border-zinc-200 bg-white pl-3 pr-8 text-sm outline-none focus:border-accent-500"
-                >
-                  <option value="" disabled>Try Demo</option>
-                  {DEMO_CONFIGS.map((d) => (
-                    <option key={d.key} value={d.key}>{d.label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-              </div>
-            </div>
-          </div>
+        <section className="flex-shrink-0 border-b border-zinc-200 px-4 py-3 sm:px-6">
+          <p className="text-sm font-medium text-zinc-400">{patientRecordNumber}</p>
         </section>
 
         {/* Inner content */}
@@ -1116,127 +1125,120 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           {/* Left: Transcript + SOAP */}
           <div className={`min-h-0 overflow-y-auto border-r border-zinc-200 px-4 py-6 sm:px-6 ${mobilePanel === "copilot" ? "hidden lg:block" : "block"}`}>
 
-            {/* Transcript form */}
+            {/* Input form */}
             <form onSubmit={handleSubmit} className="border-b border-zinc-100 pb-6">
 
-              {/* Accordion header */}
-              <button
-                type="button"
-                onClick={() => setInputOpen((o) => !o)}
-                className="mb-3 flex w-full items-center justify-between gap-3 text-left"
-              >
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-medium uppercase text-zinc-500">Transcript</h3>
-                  {!inputOpen && manualTranscript && (
-                    <span className="max-w-[180px] truncate text-xs text-zinc-400 arabic-text" dir="rtl">
-                      {manualTranscript.slice(0, 60)}
-                    </span>
-                  )}
-                  {!inputOpen && audioFile && (
-                    <span className="max-w-[160px] truncate text-xs text-zinc-400">{audioFile.name}</span>
-                  )}
-                </div>
-                <ChevronDown className={`h-4 w-4 flex-shrink-0 text-zinc-400 transition-transform duration-200 ${inputOpen ? "" : "-rotate-90"}`} />
-              </button>
-
-              {/* Collapsible input area */}
-              <div className={`overflow-hidden transition-all duration-300 ${inputOpen ? "max-h-[700px] opacity-100" : "max-h-0 opacity-0"}`}>
-                <div className="mb-3 flex items-center gap-1">
-                  <button type="button" onClick={() => setInputMode("manual")}
-                    className={`rounded-app px-3 py-2.5 min-h-[44px] text-sm font-medium ${inputMode === "manual" ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"}`}>
-                    Text
-                  </button>
-                  <button type="button" onClick={isRecording ? stopRecording : startRecording}
-                    className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-app px-3 py-2.5 text-sm font-medium ${isRecording ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100"}`}>
-                    {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                    {isRecording ? "Stop" : "Record"}
-                  </button>
-                  <label className={`inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-app px-3 py-2.5 text-sm font-medium ${inputMode === "upload" ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"}`}>
-                    <Paperclip className="h-4 w-4" />
-                    Upload
-                    <input type="file"
-                      accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/m4a,audio/x-m4a,audio/aac,audio/ogg,audio/webm,audio/flac,audio/mp4,video/mp4,.mp3,.wav,.m4a,.mp4,.aac,.ogg,.webm,.flac"
-                      className="sr-only"
+              {/* Input area */}
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => { if (isRecording) stopRecording(); setInputMode("manual"); }}
+                      className={`rounded-app px-3 py-2.5 min-h-[44px] text-sm font-medium ${inputMode === "manual" ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"}`}>
+                      Text
+                    </button>
+                    <button type="button" onClick={isRecording ? stopRecording : startRecording}
+                      className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-app px-3 py-2.5 text-sm font-medium ${isRecording ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100"}`}>
+                      {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                      {isRecording ? "Stop" : "Record"}
+                    </button>
+                    <label className={`inline-flex min-h-[44px] cursor-pointer items-center gap-1.5 rounded-app px-3 py-2.5 text-sm font-medium ${inputMode === "upload" ? "bg-accent-50 text-accent-600" : "text-zinc-500 hover:bg-zinc-100"}`}>
+                      <Paperclip className="h-4 w-4" />
+                      Upload
+                      <input type="file"
+                        accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/m4a,audio/x-m4a,audio/aac,audio/ogg,audio/webm,audio/flac,audio/mp4,video/mp4,.mp3,.wav,.m4a,.mp4,.aac,.ogg,.webm,.flac"
+                        className="sr-only"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          if (file) {
+                            const err = validateAudioFile(file);
+                            if (err) { setError(err); e.target.value = ""; return; }
+                          }
+                          if (isRecording) stopRecording();
+                          setAudioFile(file);
+                          setInputMode("upload");
+                          setError("");
+                          setSelectedDemo("");
+                        }} />
+                    </label>
+                  </div>
+                  <div className="relative">
+                    <select
+                      value={selectedDemo}
                       onChange={(e) => {
-                        const file = e.target.files?.[0] ?? null;
-                        if (file) {
-                          const err = validateAudioFile(file);
-                          if (err) { setError(err); e.target.value = ""; return; }
-                        }
-                        setAudioFile(file);
-                        setInputMode("upload");
-                        setRecordingLabel("");
+                        setSelectedDemo(e.target.value);
+                        setResult(null);
+                        setPipelineSteps([]);
+                        setStorageStatus("");
                         setError("");
-                      }} />
-                  </label>
+                        setPromptAnswers({});
+                        setPromptInputs({});
+                      }}
+                      aria-label="Try demo"
+                      className="h-9 appearance-none rounded-app border border-zinc-200 bg-white pl-2.5 pr-7 text-sm outline-none focus:border-accent-500"
+                    >
+                      <option value="" disabled>Try Demo</option>
+                      {DEMO_CONFIGS.map((d) => (
+                        <option key={d.key} value={d.key}>{d.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+                  </div>
                 </div>
 
                 {inputMode === "manual" ? (
-                  <div>
-                    <textarea
-                      value={manualTranscript}
-                      onChange={(e) => setManualTranscript(e.target.value)}
-                      dir="rtl"
-                      className="arabic-text min-h-36 w-full resize-none rounded-app border border-zinc-200 bg-white p-4 text-base leading-8 text-zinc-950 outline-none placeholder:text-zinc-400 focus:border-zinc-950"
-                      placeholder="اكتب نص الاستشارة هنا..."
-                      required
-                    />
-                    {!manualTranscript && !result && (
-                      <p className="mt-2 text-center text-sm text-zinc-400 py-2">
-                        Type or paste the consultation transcript above, or switch to Record / Upload.
-                      </p>
-                    )}
-                  </div>
+                  <textarea
+                    value={manualTranscript}
+                    onChange={(e) => setManualTranscript(e.target.value)}
+                    dir="rtl"
+                    className="arabic-text min-h-36 w-full resize-none rounded-app border border-zinc-200 bg-white p-4 text-base leading-8 text-zinc-950 outline-none placeholder:text-zinc-400 focus:border-zinc-950"
+                    placeholder="اكتب نص الاستشارة هنا..."
+                    required
+                  />
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex min-h-28 flex-col items-center justify-center rounded-app border border-zinc-200 text-center text-[15px] text-zinc-500">
-                      <div className={`mb-3 h-3 w-3 rounded-full transition-colors ${isRecording ? "bg-accent-500 recording-pulse" : "bg-zinc-300"}`} />
-                      <p className="font-medium text-zinc-950">
-                        {isRecording ? "Recording in progress" : audioFile ? "Audio ready" : "Record or upload audio"}
-                      </p>
-                      <p className="mt-1 text-sm">{recordingLabel || "Generate when the consultation audio is ready."}</p>
-                      {audioFile?.type === "video/mp4" && (
-                        <p className="mt-2 max-w-xs text-xs text-amber-600">MP4 files contain video — the backend will extract audio for transcription.</p>
-                      )}
-                    </div>
-
-                    {/* Audio player — upload mode only */}
-                    {inputMode === "upload" && audioFile && audioObjectUrl && (
-                      <div className="rounded-app border border-zinc-200 bg-zinc-50 px-4 py-3">
-                        <p className="mb-2 truncate text-xs font-medium text-zinc-500">{audioFile.name}</p>
-                        <div className="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={toggleAudio}
-                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent-500 text-white hover:bg-accent-600"
-                          >
-                            {audioPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={stopAudio}
-                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-100"
-                          >
-                            <Square className="h-3.5 w-3.5" />
-                          </button>
-                          <input
-                            type="range"
-                            min={0}
-                            max={audioDuration || 1}
-                            value={audioCurrentTime}
-                            step={0.1}
-                            onChange={(e) => {
-                              const t = parseFloat(e.target.value);
-                              setAudioCurrentTime(t);
-                              if (audioRef.current) audioRef.current.currentTime = t;
-                            }}
-                            className="flex-1 accent-[#D20A2E]"
-                          />
-                          <span className="flex-shrink-0 text-xs tabular-nums text-zinc-400">
-                            {formatTime(audioCurrentTime)} / {formatTime(audioDuration)}
-                          </span>
-                        </div>
+                    {isRecording ? (
+                      <div className="flex min-h-28 flex-col items-center justify-center rounded-app border border-zinc-200 text-center">
+                        <div className="mb-3 h-3 w-3 rounded-full bg-accent-500 recording-pulse" />
+                        <p className="text-2xl font-semibold tabular-nums text-zinc-950">{formatTime(recordingSeconds)}</p>
+                        <p className="mt-1 text-sm text-zinc-500">Recording — tap Stop when done</p>
                       </div>
+                    ) : audioFile && audioObjectUrl ? (
+                      <div className="flex items-center gap-3 rounded-app border border-zinc-200 bg-zinc-50 px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={toggleAudio}
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent-500 text-white hover:bg-accent-600"
+                        >
+                          {audioPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                        </button>
+                        <input
+                          type="range"
+                          min={0}
+                          max={audioDuration || 1}
+                          value={audioCurrentTime}
+                          step={0.1}
+                          onChange={(e) => {
+                            const t = parseFloat(e.target.value);
+                            setAudioCurrentTime(t);
+                            if (audioRef.current) audioRef.current.currentTime = t;
+                          }}
+                          className="flex-1 accent-[#D20A2E]"
+                        />
+                        <span className="flex-shrink-0 text-xs tabular-nums text-zinc-400">
+                          {formatTime(audioCurrentTime)} / {formatTime(audioDuration)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => { stopAudio(); setAudioFile(null); setSelectedDemo(""); setInputMode("manual"); }}
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-400 hover:text-red-500 hover:border-red-200"
+                          aria-label="Remove audio"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : null}
+                    {audioFile?.type === "video/mp4" && (
+                      <p className="text-xs text-amber-600">MP4 files contain video — the backend will extract audio for transcription.</p>
                     )}
                   </div>
                 )}
@@ -1256,7 +1258,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                       <AlertCircle className="h-4 w-4 flex-shrink-0" />
                       {error}
                     </span>
-                  ) : storageStatus ? storageStatus : audioFile ? "Audio ready for note generation." : "Doctor reviews before anything is saved."}
+                  ) : storageStatus ? storageStatus : "Doctor reviews before anything is saved."}
                 </div>
                 <button
                   type="submit"
@@ -1268,106 +1270,109 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 </button>
               </div>
 
-              {/* Output transcript accordion */}
-              {result && (
-                <div className="mt-5 border-t border-zinc-100 pt-5">
-                  <button
-                    type="button"
-                    onClick={() => setOutputOpen((o) => !o)}
-                    className="flex w-full items-center justify-between gap-3 text-left"
-                  >
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-zinc-950">Output transcript</p>
-                      {!outputOpen && transcriptionText && (
-                        <span className="max-w-[200px] truncate text-xs text-zinc-400 arabic-text" dir="rtl">
-                          {transcriptionText.slice(0, 50)}
-                        </span>
-                      )}
-                    </div>
-                    <ChevronDown className={`h-4 w-4 flex-shrink-0 text-zinc-400 transition-transform duration-200 ${outputOpen ? "" : "-rotate-90"}`} />
-                  </button>
-
-                  <div className={`overflow-hidden transition-all duration-300 ${outputOpen ? "max-h-[1200px] opacity-100 mt-3" : "max-h-0 opacity-0"}`}>
-                    <div className="arabic-text text-lg leading-9 text-zinc-700">
-                      <HighlightedTranscript
-                        text={transcriptionText || manualTranscript}
-                        words={uncertainWords}
-                      />
-                    </div>
-                    {translationText && <p className="mt-4 text-sm leading-6 text-zinc-500">{translationText}</p>}
-                    {uncertainWords.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {uncertainWords.map((w) => (
-                          <span key={w.id ?? w.text} className="relative group/chip">
-                            <span className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                              w.risk === "critical" ? "bg-red-100 text-red-700"
-                              : w.risk === "high" ? "bg-amber-100 text-amber-700"
-                              : "bg-zinc-100 text-zinc-500"
-                            }`}>
-                              <span dir="rtl">{w.text}</span>
-                              {w.risk && <RiskChip risk={w.risk} />}
-                            </span>
-                            <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-accent-200 bg-white p-3 shadow-lg opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100">
-                              <div className="mb-1.5 flex items-center gap-2">
-                                <span className="font-bold text-zinc-950 text-sm" dir="rtl">{w.text}</span>
-                                {w.risk && <RiskChip risk={w.risk} />}
-                              </div>
-                              {w.possible_meanings && w.possible_meanings.length > 0 && (
-                                <p className="text-xs leading-5 text-zinc-600">{w.possible_meanings.join(" · ")}</p>
-                              )}
-                              {w.reason && <p className="mt-1 text-xs leading-5 text-zinc-400">{w.reason}</p>}
-                            </div>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </form>
 
-            {/* SOAP note */}
+            {/* Transcript — always visible once content exists */}
+            {(transcriptionText || (inputMode === "manual" && manualTranscript)) && (
+              <section className="border-b border-zinc-100 py-6">
+                <h3 className="mb-3 text-sm font-medium uppercase text-zinc-500">Transcript</h3>
+                <div className="arabic-text text-lg leading-9 text-zinc-700">
+                  <HighlightedTranscript
+                    text={transcriptionText || manualTranscript}
+                    words={uncertainWords}
+                  />
+                </div>
+                {translationText && <p className="mt-4 text-sm leading-6 text-zinc-500">{translationText}</p>}
+                {uncertainWords.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {uncertainWords.map((w) => (
+                      <span key={w.id ?? w.text} className="relative group/chip">
+                        <span className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                          w.risk === "critical" ? "bg-red-100 text-red-700"
+                          : w.risk === "high" ? "bg-amber-100 text-amber-700"
+                          : "bg-zinc-100 text-zinc-500"
+                        }`}>
+                          <span dir="rtl">{w.text}</span>
+                          {w.risk && <RiskChip risk={w.risk} />}
+                        </span>
+                        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-accent-200 bg-white p-3 shadow-lg opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100">
+                          <div className="mb-1.5 flex items-center gap-2">
+                            <span className="font-bold text-zinc-950 text-sm" dir="rtl">{w.text}</span>
+                            {w.risk && <RiskChip risk={w.risk} />}
+                          </div>
+                          {w.possible_meanings && w.possible_meanings.length > 0 && (
+                            <p className="text-xs leading-5 text-zinc-600">{w.possible_meanings.join(" · ")}</p>
+                          )}
+                          {w.reason && <p className="mt-1 text-xs leading-5 text-zinc-400">{w.reason}</p>}
+                        </div>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* Note (editable) */}
             <section className="border-b border-zinc-100 py-6">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold uppercase text-zinc-950">SOAP Note</h3>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold uppercase text-zinc-950">Note</h3>
                 {result && soapSections.length > 0 && (
-                  <span className="border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700">
-                    {(result.soap_note as Record<string, unknown> | undefined)?.overall_quality_level as string ?? "Needs review"}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={copyNote}
+                      className="inline-flex items-center gap-1.5 rounded-app border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:border-zinc-950 hover:text-zinc-950 transition-colors"
+                    >
+                      {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Clipboard className="h-3 w-3" />}
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={downloadAsPdf}
+                      className="inline-flex items-center gap-1.5 rounded-app border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:border-zinc-950 hover:text-zinc-950 transition-colors"
+                    >
+                      <Download className="h-3 w-3" />
+                      PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={sendToCerner}
+                      className={`inline-flex items-center gap-1.5 rounded-app border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                        cernerSent
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-zinc-200 text-zinc-600 hover:border-zinc-950 hover:text-zinc-950"
+                      }`}
+                    >
+                      {cernerSent ? <Check className="h-3 w-3" /> : null}
+                      {cernerSent ? "Sent to Cerner" : "Add to Cerner"}
+                    </button>
+                  </div>
                 )}
               </div>
               {soapSections.length > 0 ? (
-                <div className="divide-y divide-zinc-100 border-y border-zinc-950 bg-white">
+                <div className="divide-y divide-zinc-100 border-y border-zinc-200">
                   {soapSections.map((section) => (
-                    <article key={section.title} className="py-5">
-                      <h4 className="text-xs font-semibold uppercase text-zinc-950">
+                    <article key={section.title} className="py-4">
+                      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
                         {section.title.charAt(0).toUpperCase() + section.title.slice(1)}
                       </h4>
                       {section.body ? (
-                        <p className="mt-2 text-base leading-8 text-zinc-900">
-                          <HighlightedTranscript text={section.body} words={uncertainWords} />
-                        </p>
+                        <textarea
+                          value={editedSections[section.title] ?? section.body}
+                          onChange={(e) => setEditedSections((prev) => ({ ...prev, [section.title]: e.target.value }))}
+                          rows={Math.max(3, Math.ceil(((editedSections[section.title] ?? section.body).length) / 72))}
+                          className="w-full resize-none rounded-app border border-transparent bg-transparent px-1 -ml-1 text-base leading-8 text-zinc-900 outline-none transition-colors focus:border-zinc-200 focus:bg-zinc-50 focus:px-3"
+                        />
                       ) : (
-                        <p className="mt-2 text-base italic text-zinc-400">Not provided</p>
+                        <p className="text-base italic text-zinc-400">Not provided</p>
                       )}
                     </article>
                   ))}
                 </div>
               ) : (
                 <p className="border-y border-zinc-200 py-8 text-center text-base text-zinc-400">
-                  Generate a SOAP note from the transcript.
+                  Generate a note from the transcript.
                 </p>
-              )}
-              {result && soapSections.length > 0 && (
-                <div className="mt-6 flex justify-end">
-                  <Link
-                    href={routes.finalReview(encounterId)}
-                    className="inline-flex h-11 items-center gap-2 rounded-app bg-zinc-950 px-4 text-sm font-medium text-white hover:bg-accent-600"
-                  >
-                    Open Final Review
-                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                  </Link>
-                </div>
               )}
             </section>
 
