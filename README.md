@@ -1,5 +1,8 @@
 # SAJIL — سجل
 
+Website: sajil.vercel.app
+Experiment Notebook: https://colab.research.google.com/drive/1au_HEmAiq-B4YOuvwBus5LWDpBvAVF8N?usp=sharing
+
 ### Arabic-first clinical scribe powered by Fanar
 
 ![Next.js](https://img.shields.io/badge/Next.js_15-black?style=flat-square&logo=next.js&logoColor=white)
@@ -112,52 +115,16 @@ Separate conversational layer over the generated note. `CopilotService` uses Fan
 
 `logprobs=True` on the SOAP generation call returns token-level confidence at zero extra latency cost. Token confidence is model-native and cannot be inflated by the model's own self-assessment.
 
----
-
-## Run Locally
-
-**Backend:**
-```bash
-cd api
-cp .env.example .env   # fill FANAR_API_KEY and GROQ_API_KEY
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-```
-
-**Frontend:**
-```bash
-cp .env.example .env.local   # set NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-npm install
-npm run dev
-```
-
-**Database:**
-```bash
-supabase login
-supabase link --project-ref <your-project-ref>
-supabase db push
-```
-
-**Pre-generate demo cache:**
-```bash
-cd api
-python generate_demo_cache.py          # all 8 files
-python generate_demo_cache.py --key haytham_ahmed_32_egy   # single file
-```
 
 ---
 
 ---
 
-# Can an AI Medical Scribe Know When It Does Not Know?
 ## Uncertainty Evaluation Across Arabic Dialects
 
-**Fanar AI Hackathon — Research Report**
-*Qatar, June 2026*
+**Experiment Report**
 
 ---
-
-## What this is
 
 A medical scribe that transcribes Arabic consultations and generates SOAP notes needs to do more than produce output — it needs to signal when it is uncertain. A confident wrong answer in a clinical setting is more dangerous than an honest "I am not sure."
 
@@ -394,15 +361,6 @@ Pipeline A scored 0.00 on all five dimensions — a complete self-evaluation fai
 | Cross-model LLM | Groq Llama-3.3-70B-Versatile |
 | Audio synthesis | ElevenLabs |
 | Runtime | Python 3.12, httpx, asyncio, nest-asyncio |
-| Notebook | Jupyter / Google Colab |
+| Notebook | Google Colab |
 
----
-
-## Repository
-
-```
-experiment.ipynb            main notebook, run cells 1 to 5 top to bottom
-experiment_results.json     full results: transcript, SOAP, logprobs, scores, questions
-README.md                   this document
-demo-audio/                 8 dialect audio files (.mp3)
 ```
