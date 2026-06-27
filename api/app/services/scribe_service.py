@@ -96,8 +96,8 @@ class ScribeService:
         transcript = transcription_result["text"]
         file_size = transcription_result["audio"].get("size_bytes", 0) if source_mode == "audio" else 0
 
-        # ── Step 2: Check (uncertain words) ──────────────────────────────────
-        uncertain_words, partial_check = self._run_check(
+        # ── Step 2: Check (uncertain words + English summary) ───────────────
+        uncertain_words, partial_check, english_summary = self._run_check(
             transcript, dialect_hint, file_size, pipeline, warnings
         )
 
@@ -105,7 +105,8 @@ class ScribeService:
         soap_note, claims, logprob_data = self._run_soap(
             transcript, uncertain_words, patient_context_json,
             patient_record_number, encounter_id, consultation_time,
-            note_format, pipeline, warnings
+            note_format, pipeline, warnings,
+            clinical_translation=english_summary or transcript,
         )
 
         # ── Step 4: Eval ──────────────────────────────────────────────────────
@@ -122,7 +123,8 @@ class ScribeService:
 
         # ── Rule-based stabilisation ──────────────────────────────────────────
         structured: Dict[str, Any] = {
-            "translation": {"target_language": "en", "clinical_translation": transcript,
+            "translation": {"target_language": "en",
+                            "clinical_translation": english_summary or transcript,
                             "normalized_clinical_meaning": []},
             "uncertain_words": uncertain_words,
             "soap_note": soap_note,
@@ -325,8 +327,8 @@ class ScribeService:
         file_size: int,
         pipeline: PipelineLog,
         warnings: list,
-    ) -> Tuple[List[Dict[str, Any]], bool]:
-        """Returns (uncertain_words, partial_check)."""
+    ) -> Tuple[List[Dict[str, Any]], bool, str]:
+        """Returns (uncertain_words, partial_check, english_summary)."""
         step = pipeline.start_step("check", "fanar", self.fanar.model)
         try:
             result = self.fanar.chat_with_usage(build_check_prompt(transcript, dialect_hint))
@@ -340,11 +342,15 @@ class ScribeService:
                 warnings.append(
                     f"check step: partial JSON recovery used (file_size={file_size} bytes)"
                 )
-            return words, partial
+
+            parsed = extract_json_object(result["text"])
+            english_summary = parsed.get("english_clinical_summary", "") or ""
+
+            return words, partial, english_summary
         except Exception as err:
             step.finish(error=str(err))
             warnings.append(f"check step failed: {err}")
-            return [], False
+            return [], False, ""
 
     def _run_soap(
         self,
@@ -357,12 +363,13 @@ class ScribeService:
         note_format: str,
         pipeline: PipelineLog,
         warnings: list,
+        clinical_translation: str = "",
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Dict[str, Any]]:
         """Returns (soap_note, claims, logprob_data)."""
         uncertain_summary = ", ".join(w.get("text", "") for w in uncertain_words[:5]) or "none detected"
         prompt = build_soap_prompt(
             transcript=transcript,
-            clinical_translation=transcript,   # Pipeline B: no separate translation step
+            clinical_translation=clinical_translation or transcript,
             uncertain_words_summary=uncertain_summary,
             patient_context=patient_context_json,
             patient_record_number=patient_record_number,

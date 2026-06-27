@@ -27,22 +27,25 @@ def build_check_prompt(transcript: str, dialect_hint: str) -> str:
 Return ONLY valid JSON. No markdown. No explanation outside the JSON.
 
 Task:
-Analyse this Arabic clinical consultation transcript.
-Identify every word or phrase that is:
-- Dialect-specific with multiple plausible clinical meanings (most important)
-- Likely a transcription error or mishearing
-- Clinically ambiguous without further context
+Analyse this Arabic clinical consultation transcript. Do two things:
+1. Identify every word or phrase that is dialect-specific, transcription noise, or clinically ambiguous.
+2. Write a concise English clinical summary (3-5 sentences) capturing the patient's complaint, symptoms, duration, and any key clinical details mentioned.
 
-Rules:
-- Prioritise dialect_ambiguity — Gulf terms like كتمة, ضيقة, دوخة, خفقان often have 2-3 clinical meanings.
+Rules for uncertain_words:
+- Prioritise dialect_ambiguity — Gulf/Egyptian terms like كتمة, ضيقة, دوخة, خفقان often have 2-3 clinical meanings.
 - Keep possible_meanings concise (2-3 items max).
 - Do not flag grammatical particles or prepositions.
-- If the transcript is clear and unambiguous, return uncertain_words as [].
+- If transcript is clear and unambiguous, return uncertain_words as [].
+
+Rules for english_clinical_summary:
+- Write in English only. No Arabic script.
+- Capture: patient demographics (if mentioned), chief complaint, symptom duration, associated symptoms, relevant history.
+- If information is missing, say "Not mentioned".
 
 Dialect hint: {dialect_hint}
 Transcript: {transcript}
 
-Return JSON with exactly this key: uncertain_words
+Return JSON with exactly these keys: uncertain_words, english_clinical_summary
 
 {{
   "uncertain_words": [
@@ -56,7 +59,8 @@ Return JSON with exactly this key: uncertain_words
       "possible_meanings": ["...", "..."],
       "reason": "..."
     }}
-  ]
+  ],
+  "english_clinical_summary": "Patient presents with..."
 }}"""
 
 
@@ -361,9 +365,13 @@ Using the Arabic transcript and its English clinical translation, produce a stru
 and extract clinical claims — each claim must cite its evidence in the transcript.
 
 Rules:
+- CRITICAL: Write ALL soap_note field values in English only. Never output Arabic script in soap_note fields.
+- When a symptom or term is a dialect word, translate it to English and append the original in parentheses: "dizziness (دوخة)", "fatigue (تعب)".
+- chief_complaint and summary must be complete English sentences.
+- Each item in associated_symptoms, history_of_present_illness, possible_issues etc. must be an English string.
 - Do not invent vitals, diagnoses, medications, or allergies not mentioned in the transcript.
 - If a claim is inferred from context rather than directly stated, mark status as "inferred".
-- Preserve original Arabic evidence text inside claim evidence fields.
+- Preserve original Arabic evidence text only inside claim.evidence[].text fields.
 - This is a draft for physician review, not a final diagnosis.
 - Use speaker labels doctor/patient/unknown in patient_words when discernible.
 
@@ -562,35 +570,22 @@ def build_copilot_synthesis_prompt(
     tool_block = (
         json.dumps(tool_results, ensure_ascii=False, indent=2)
         if tool_results
-        else "(no tools were called)"
+        else "(none)"
     )
-    return f"""You are FanarScribe Clinical Copilot, an AI clinical decision-support assistant.
-Return ONLY valid JSON. No markdown. No explanation outside the JSON.
+    return f"""You are FanarScribe Clinical Copilot, a clinical decision-support assistant.
+Answer the physician's question concisely in plain English. Write 2-5 sentences maximum.
+Do not make definitive diagnoses. Support physician reasoning only.
+Write your answer directly — no JSON, no preamble, no markdown headers.
 
-Rules:
-- Be concise and clinically accurate.
-- Do not make definitive diagnoses; support physician reasoning.
-- If tool results show missing items, surface the most important ones clearly.
-- Suggest 2-3 relevant follow-up questions where useful.
-- sources can be [] if you have no specific references.
-
-SOAP note context:
+SOAP note:
 {soap_context or "(none)"}
-
-Conversation history:
-{history_lines or "(none)"}
 
 Tool results:
 {tool_block}
 
 Physician question: {message}
 
-Return JSON:
-{{
-  "assistant_message": "...",
-  "sources": [],
-  "suggested_follow_ups": ["...", "..."]
-}}"""
+Answer:"""
 
 
 # ── Pre-consultation intake prompt ────────────────────────────────────────────

@@ -1,20 +1,23 @@
 """
-Clinical Copilot — agentic two-phase loop.
+Clinical Copilot — two-phase pipeline.
 
-Phase 1: Fanar selects which tools to call based on the physician's question.
-Phase 2: Tools execute (deterministic — no LLM).
-Phase 3: Fanar synthesises tool results into a clinical response.
-
-Fanar is the primary model for both phases; Groq is the documented fallback.
+Phase 1: Keyword-based tool routing (deterministic — no LLM).
+Phase 2: Tool execution (deterministic — no LLM).
+Phase 3: Fanar synthesises tool results into a plain-text clinical response.
 """
 import json
 from typing import Any, Dict, List, Optional
 
-from app.core.json_utils import extract_json_object
-from app.prompts import build_copilot_synthesis_prompt, build_tool_selection_prompt
+from app.prompts import build_copilot_synthesis_prompt
 from app.services.fanar_service import FanarService
 from app.services.groq_service import GroqService
 from app.tools import run_checklist, scan_red_flags, check_drug_interactions, suggest_icd_codes
+
+_COMPLAINT_KEYWORDS = {
+    "respiratory": ["respiratory", "cough", "breath", "lung", "wheez", "asthma", "pneumonia"],
+    "cardiac": ["cardiac", "heart", "chest", "palpitat", "coronary"],
+    "gastrointestinal": ["gastro", "stomach", "bowel", "nausea", "vomit", "diarrhea", "reflux"],
+}
 
 
 class CopilotService:
@@ -32,10 +35,8 @@ class CopilotService:
     ) -> Dict[str, Any]:
         soap_note_dict = self._parse_soap_context(soap_note_context)
 
-        # ── Phase 1: Tool selection ───────────────────────────────────────
-        tool_selection = self._select_tools(message, soap_note_context)
-        tools_to_call: List[str] = tool_selection.get("tools_to_call", [])[:3]
-        complaint_type: str = tool_selection.get("complaint_type", "general")
+        # ── Phase 1: Keyword-based tool routing ──────────────────────────
+        tools_to_call, complaint_type = self._route_tools(message, soap_note_dict)
 
         # ── Phase 2: Tool execution (deterministic) ───────────────────────
         tool_results: List[Dict[str, Any]] = []
@@ -53,7 +54,7 @@ class CopilotService:
                 result = suggest_icd_codes(soap_note_dict)
                 tool_results.append({"tool": tool_name, "input": {}, "result": result})
 
-        # ── Phase 3: Synthesis ────────────────────────────────────────────
+        # ── Phase 3: Synthesis (plain-text response) ──────────────────────
         history_lines = self._format_history(conversation_history)
         synthesis_prompt = build_copilot_synthesis_prompt(
             message=message,
@@ -63,47 +64,49 @@ class CopilotService:
         )
 
         provider = "fanar"
-        parsed: Dict[str, Any] = {}
+        assistant_message = ""
         try:
-            raw = self.fanar.chat(synthesis_prompt, temperature=0.3)
-            parsed = extract_json_object(raw)
-        except Exception as fanar_err:
+            assistant_message = self.fanar.chat(synthesis_prompt, temperature=0.3).strip()
+        except Exception:
             try:
-                raw = self.groq.chat(synthesis_prompt, temperature=0.3, max_tokens=1200)
-                parsed = extract_json_object(raw)
+                assistant_message = self.groq.chat(synthesis_prompt, temperature=0.3, max_tokens=600).strip()
                 provider = "groq"
             except Exception:
-                parsed = {
-                    "assistant_message": (
-                        "I am unable to process your question right now. "
-                        "Please consult your clinical resources directly."
-                    ),
-                    "sources": [],
-                    "suggested_follow_ups": [],
-                }
+                assistant_message = "Unable to generate a response. Please review the tool results above."
                 provider = "fallback"
 
         return {
-            "assistant_message": parsed.get("assistant_message", ""),
-            "sources": parsed.get("sources", []),
-            "suggested_follow_ups": parsed.get("suggested_follow_ups", []),
+            "assistant_message": assistant_message,
+            "sources": [],
+            "suggested_follow_ups": [],
             "tool_calls": tool_results,
             "_provider": provider,
         }
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
-    def _select_tools(self, message: str, soap_context: Optional[str]) -> Dict[str, Any]:
-        prompt = build_tool_selection_prompt(message, soap_context)
-        try:
-            raw = self.fanar.chat(prompt, temperature=0)
-            return extract_json_object(raw)
-        except Exception:
-            try:
-                raw = self.groq.chat(prompt, temperature=0, max_tokens=200)
-                return extract_json_object(raw)
-            except Exception:
-                return {"tools_to_call": [], "complaint_type": "general"}
+    def _route_tools(self, message: str, soap_note: Optional[Dict]) -> tuple[List[str], str]:
+        """Deterministic keyword-based tool selection."""
+        msg = message.lower()
+        tools: List[str] = []
+
+        if any(kw in msg for kw in ["icd", " code", "coding", "diagnosis code"]):
+            tools.append("icd_suggestion_tool")
+        elif any(kw in msg for kw in ["drug", "medication", "interaction", "prescription"]):
+            tools.append("drug_interaction_tool")
+        elif any(kw in msg for kw in ["checklist", "missing", "documented", "complete"]):
+            tools.append("checklist_tool")
+        elif any(kw in msg for kw in ["red flag", "risk flag", "alert"]):
+            tools.append("red_flag_tool")
+        # "treatment plan", general questions → no tools, pure synthesis
+
+        complaint_type = "general"
+        for ctype, keywords in _COMPLAINT_KEYWORDS.items():
+            if any(kw in msg for kw in keywords):
+                complaint_type = ctype
+                break
+
+        return tools, complaint_type
 
     def _parse_soap_context(self, soap_context: Optional[str]) -> Optional[Dict[str, Any]]:
         if not soap_context:

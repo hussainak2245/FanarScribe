@@ -379,15 +379,26 @@ function HighlightedTranscript({ text, words }: { text: string; words: Uncertain
       {parts.map((part, i) => {
         const word = wordByText.get(part.toLowerCase());
         if (!word) return part;
-        const title = word.possible_meanings?.length
-          ? `Possible: ${word.possible_meanings.join(" · ")}`
-          : word.reason ?? "";
+        const hasMeanings = word.possible_meanings && word.possible_meanings.length > 0;
         return (
           <span key={i} className="relative group/uw inline-block cursor-help rounded-app px-1" style={UNCERTAIN_HIGHLIGHT}>
             {part}
-            {title && (
-              <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 w-52 rounded-lg border border-accent-200 bg-white p-2 text-xs leading-5 text-zinc-700 shadow-lg opacity-0 transition-opacity duration-150 group-hover/uw:opacity-100 whitespace-normal">
-                {title}
+            {(hasMeanings || word.reason) && (
+              <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 w-56 rounded-xl border border-zinc-200 bg-white shadow-lg opacity-0 transition-opacity duration-150 group-hover/uw:opacity-100 overflow-hidden">
+                <span className="block border-b border-zinc-100 px-3 py-2 text-base font-semibold text-zinc-900" dir="rtl">{part}</span>
+                {hasMeanings && (
+                  <span className="block px-3 py-2">
+                    {word.possible_meanings!.map((m, mi) => (
+                      <span key={mi} className="flex items-center gap-1.5 py-0.5 text-xs text-zinc-600">
+                        <span className="h-1 w-1 rounded-full bg-zinc-300 flex-shrink-0" />
+                        {m}
+                      </span>
+                    ))}
+                  </span>
+                )}
+                {!hasMeanings && word.reason && (
+                  <span className="block px-3 py-2 text-xs text-zinc-500">{word.reason}</span>
+                )}
               </span>
             )}
           </span>
@@ -397,35 +408,29 @@ function HighlightedTranscript({ text, words }: { text: string; words: Uncertain
   );
 }
 
-const THINKING_PHRASES = [
-  "Listening to Arabic dialect patterns…",
-  "Checking for uncertain clinical terms…",
-  "Generating SOAP note with Fanar…",
-  "Measuring token-level confidence…",
-  "Scoring note quality across 5 dimensions…",
-  "Synthesising uncertainty signals…",
-  "Identifying physician checkpoint questions…",
-  "Evaluating question quality…",
-  "Applying escalation rules…",
-  "Finalising clinical note…",
+const PIPELINE_B_STEPS = [
+  { label: "Speech to text",          model: "Fanar-Aura-STT-LF-1", seconds: 15 },
+  { label: "Dialect & term check",    model: "Fanar-S-1-7B",         seconds: 10 },
+  { label: "SOAP + logprob scoring",  model: "Fanar-S-1-7B",         seconds: 15 },
+  { label: "Self-evaluation",         model: "Fanar-S-1-7B",         seconds: 10 },
+  { label: "Independent judge",       model: "Fanar-S-1-7B",         seconds: 10 },
+  { label: "Question quality check",  model: "Fanar-S-1-7B",         seconds: 6  },
 ];
 
-/** Animated thinking phrase stream shown while Pipeline B runs */
-function ThinkingStream() {
-  const [phraseIndex, setPhraseIndex] = useState(0);
-  const [opacity, setOpacity] = useState(1);
+/** Live 6-step tracker shown while Pipeline B runs */
+function PipelineStepTracker() {
+  const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
-    const cycle = () => {
-      setOpacity(0);
-      const fadeIn = setTimeout(() => {
-        setPhraseIndex((i) => (i + 1) % THINKING_PHRASES.length);
-        setOpacity(1);
-      }, 300);
-      return fadeIn;
-    };
-    const interval = setInterval(cycle, 2100);
-    return () => clearInterval(interval);
+    let elapsed = 0;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    PIPELINE_B_STEPS.forEach((step, index) => {
+      if (index === 0) { elapsed += step.seconds; return; }
+      const t = setTimeout(() => setCurrentStep(index), elapsed * 1000);
+      timers.push(t);
+      elapsed += step.seconds;
+    });
+    return () => timers.forEach(clearTimeout);
   }, []);
 
   return (
@@ -437,12 +442,31 @@ function ThinkingStream() {
         </p>
         <LoaderCircle className="ml-auto h-3.5 w-3.5 animate-spin text-accent-400" />
       </div>
-      <p
-        className="text-sm text-zinc-600 transition-opacity duration-300"
-        style={{ opacity }}
-      >
-        {THINKING_PHRASES[phraseIndex]}
-      </p>
+      <div className="space-y-2">
+        {PIPELINE_B_STEPS.map((step, index) => {
+          const done = index < currentStep;
+          const active = index === currentStep;
+          return (
+            <div key={step.label} className={`flex items-center gap-2.5 text-sm transition-colors ${
+              done ? "text-zinc-300" : active ? "text-zinc-900" : "text-zinc-300"
+            }`}>
+              <div className="flex w-4 flex-shrink-0 justify-center">
+                {done ? (
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent-300" />
+                ) : active ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin text-accent-500" />
+                ) : (
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-200" />
+                )}
+              </div>
+              <span className={active ? "font-medium" : ""}>{step.label}</span>
+              {active && (
+                <span className="ml-auto font-mono text-[10px] text-zinc-400">{step.model}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -600,6 +624,13 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const physicianReviewRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const soapTextareaRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
+
+  function autoResize(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }
 
   const transcriptionText = asText(result?.transcription);
   const translationText = asText(result?.translation);
@@ -647,6 +678,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     soapSections.forEach((s) => { initial[s.title] = s.body; });
     setEditedSections(initial);
   }, [soapSections]);
+
+  useEffect(() => {
+    setTimeout(() => {
+      soapTextareaRefs.current.forEach((el) => autoResize(el));
+    }, 50);
+  }, [editedSections]);
 
   function getNoteText() {
     return soapSections
@@ -1010,7 +1047,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
 
               {/* Pipeline progress (shown during + after processing) */}
               {isSubmitting
-                ? <ThinkingStream />
+                ? <PipelineStepTracker />
                 : result?.pipeline && <PipelineBadge pipeline={result.pipeline} />
               }
 
@@ -1045,6 +1082,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                     words={uncertainWords}
                   />
                 </div>
+                {translationText && translationText !== transcriptionText && (
+                  <p className="mt-3 rounded-lg border-l-2 border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm leading-6 italic text-zinc-500">{translationText}</p>
+                )}
                 {uncertainWords.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {uncertainWords.map((w) => (
@@ -1057,15 +1097,23 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                           <span dir="rtl">{w.text}</span>
                           {w.risk && <RiskChip risk={w.risk} />}
                         </span>
-                        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-lg border border-accent-200 bg-white p-3 shadow-lg opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100">
-                          <div className="mb-1.5 flex items-center gap-2">
-                            <span className="font-bold text-zinc-950 text-sm" dir="rtl">{w.text}</span>
+                        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-zinc-200 bg-white shadow-lg opacity-0 transition-opacity duration-150 group-hover/chip:opacity-100 overflow-hidden">
+                          <div className="flex items-center justify-between border-b border-zinc-100 px-3 py-2">
+                            <span className="text-base font-semibold text-zinc-900" dir="rtl">{w.text}</span>
                             {w.risk && <RiskChip risk={w.risk} />}
                           </div>
-                          {w.possible_meanings && w.possible_meanings.length > 0 && (
-                            <p className="text-xs leading-5 text-zinc-600">{w.possible_meanings.join(" · ")}</p>
-                          )}
-                          {w.reason && <p className="mt-1 text-xs leading-5 text-zinc-400">{w.reason}</p>}
+                          {w.possible_meanings && w.possible_meanings.length > 0 ? (
+                            <div className="px-3 py-2">
+                              {w.possible_meanings.map((m, mi) => (
+                                <p key={mi} className="flex items-center gap-1.5 py-0.5 text-xs text-zinc-600">
+                                  <span className="h-1 w-1 rounded-full bg-zinc-300 flex-shrink-0" />
+                                  {m}
+                                </p>
+                              ))}
+                            </div>
+                          ) : w.reason ? (
+                            <p className="px-3 py-2 text-xs text-zinc-500">{w.reason}</p>
+                          ) : null}
                         </div>
                       </span>
                     ))}
@@ -1129,10 +1177,17 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                       </h4>
                       {section.body ? (
                         <textarea
+                          ref={(el) => {
+                            if (el) { soapTextareaRefs.current.set(section.title, el); autoResize(el); }
+                            else soapTextareaRefs.current.delete(section.title);
+                          }}
                           value={editedSections[section.title] ?? section.body}
-                          onChange={(e) => setEditedSections((prev) => ({ ...prev, [section.title]: e.target.value }))}
-                          rows={Math.max(3, Math.ceil(((editedSections[section.title] ?? section.body).length) / 72))}
-                          className="w-full resize-none rounded-app border border-transparent bg-transparent px-1 -ml-1 text-base leading-8 text-zinc-900 outline-none transition-colors focus:border-zinc-200 focus:bg-zinc-50 focus:px-3"
+                          onChange={(e) => {
+                            setEditedSections((prev) => ({ ...prev, [section.title]: e.target.value }));
+                            autoResize(e.currentTarget);
+                          }}
+                          rows={1}
+                          className="w-full resize-none overflow-hidden rounded-app border border-transparent bg-transparent px-1 -ml-1 text-base leading-8 text-zinc-900 outline-none transition-colors focus:border-zinc-200 focus:bg-zinc-50 focus:px-3"
                         />
                       ) : (
                         <p className="text-base italic text-zinc-400">Not provided</p>
@@ -1175,25 +1230,22 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                 </div>
 
                 {!currentPrompt && reviewPrompts.length > 0 ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                    <Check className="h-4 w-4 flex-shrink-0 text-emerald-600" />
-                    <p className="text-sm text-emerald-800">All checkpoints resolved ✓</p>
-                  </div>
+                  <p className="text-sm text-zinc-500">All checkpoints resolved.</p>
                 ) : currentPrompt ? (
-                  <article className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                  <article className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                       {currentPrompt.priority && (
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
                           currentPrompt.priority === "critical" ? "bg-red-100 text-red-700"
-                          : currentPrompt.priority === "high" ? "bg-amber-200 text-amber-800"
-                          : "bg-zinc-100 text-zinc-500"
+                          : currentPrompt.priority === "high" ? "bg-orange-100 text-orange-700"
+                          : "bg-blue-100 text-blue-600"
                         }`}>{currentPrompt.priority}</span>
                       )}
                       {currentPrompt.title && (
-                        <p className="text-xs font-semibold uppercase text-amber-800">{currentPrompt.title}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">{currentPrompt.title}</p>
                       )}
                     </div>
-                    <p className="text-sm font-medium leading-5 text-zinc-950">{currentPrompt.question}</p>
+                    <p className="text-sm font-medium leading-5 text-zinc-900">{currentPrompt.question}</p>
                     {currentPrompt.options.length > 0 && (
                       <div className="mt-2 space-y-1">
                         {currentPrompt.options.map((option) => (
@@ -1201,17 +1253,17 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                             key={`${currentPrompt.id}-${option.value}`}
                             type="button"
                             onClick={() => handlePromptAnswer(currentPrompt, option)}
-                            className="group flex min-h-[40px] w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-accent-500 hover:bg-accent-50 hover:text-accent-700"
+                            className="group flex min-h-[38px] w-full items-center gap-3 rounded-lg border border-blue-100 bg-white px-3 py-1.5 text-left text-sm font-medium text-zinc-700 transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-800"
                           >
-                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 border-zinc-300 group-hover:border-accent-500">
-                              <span className="h-1.5 w-1.5 rounded-full bg-transparent group-hover:bg-accent-500" />
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 border-zinc-300 group-hover:border-blue-400">
+                              <span className="h-1.5 w-1.5 rounded-full bg-transparent group-hover:bg-blue-400" />
                             </span>
                             {option.label}
                           </button>
                         ))}
                       </div>
                     )}
-                    <div className="mt-1.5 flex gap-2">
+                    <div className="mt-2 flex gap-2">
                       <input
                         value={promptInputs[currentPrompt.id] ?? ""}
                         onChange={(e) => setPromptInputs((prev) => ({ ...prev, [currentPrompt.id]: e.target.value }))}
@@ -1222,7 +1274,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                             if (text) handlePromptAnswer(currentPrompt, { text });
                           }
                         }}
-                        className="min-h-[36px] min-w-0 flex-1 rounded-app border border-zinc-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-zinc-950"
+                        className="min-h-[36px] min-w-0 flex-1 rounded-app border border-zinc-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400"
                         placeholder="Or type a correction…"
                       />
                       <button
@@ -1232,24 +1284,13 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                           if (text) handlePromptAnswer(currentPrompt, { text });
                         }}
                         disabled={!promptInputs[currentPrompt.id]?.trim()}
-                        className="min-h-[36px] rounded-app bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
+                        className="min-h-[36px] rounded-app bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
                       >
                         Save
                       </button>
                     </div>
                   </article>
                 ) : null}
-
-                {answeredPromptCount > 0 && (
-                  <div className="space-y-1.5">
-                    {reviewPrompts.filter((p) => promptAnswers[p.id]).map((p) => (
-                      <div key={p.id} className="border-l-2 border-emerald-400 pl-3">
-                        <p className="text-[10px] font-medium uppercase text-zinc-400">Answered</p>
-                        <p className="text-xs text-zinc-700">{promptAnswers[p.id]}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
@@ -1270,9 +1311,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                     }`}>
                       <p className="whitespace-pre-wrap">{message.content}</p>
                     </div>
-                    {message.toolCalls && message.toolCalls.length > 0 && (
+                    {message.toolCalls && message.toolCalls.filter(tc => tc.tool === "checklist_tool" || tc.tool === "red_flag_tool").length > 0 && (
                       <div className="mt-2 w-full space-y-2">
-                        {message.toolCalls.map((tc, i) => (
+                        {message.toolCalls.filter(tc => tc.tool === "checklist_tool" || tc.tool === "red_flag_tool").map((tc, i) => (
                           <ToolCallCard key={`${tc.tool}_${i}`} tc={tc} />
                         ))}
                       </div>
