@@ -6,7 +6,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Check,
-  CheckCircle2,
   ChevronDown,
   ClipboardList,
   Clipboard,
@@ -21,7 +20,6 @@ import {
   Play,
   ShieldAlert,
   Square,
-  Wrench,
   X,
   Zap
 } from "lucide-react";
@@ -122,10 +120,8 @@ const DEMO_CONFIGS: DemoConfig[] = [
 ];
 
 const toolItems = [
-  { label: "Run checklist", icon: ListChecks, query: "Run the clinical checklist for this consultation and tell me what's missing." },
-  { label: "Red flags", icon: ShieldAlert, query: "Scan this note for red flags and high-risk clinical patterns." },
-  { label: "Drug interactions", icon: Wrench, query: "Check the plan section for any drug-drug interactions." },
   { label: "ICD codes", icon: FileText, query: "Suggest ICD-10 codes for the diagnosis in this SOAP note." },
+  { label: "Treatment plan", icon: ClipboardList, query: "Suggest a detailed treatment plan and follow-up regimen based on this consultation." },
 ];
 
 // ── Helper functions ──────────────────────────────────────────────────────────
@@ -169,6 +165,67 @@ function getArray(value: unknown): unknown[] {
   return [];
 }
 
+function formatSoapSection(key: string, value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value === "..." ? "" : value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (!item) return "";
+        if (typeof item === "string") return item === "..." ? "" : `• ${item}`;
+        if (typeof item === "object") {
+          const r = item as Record<string, unknown>;
+          const t = asText(r.text ?? r.english_meaning ?? r.finding ?? r.content ?? r);
+          return t && t !== "..." ? `• ${t}` : "";
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (typeof value !== "object") return String(value);
+  const r = value as Record<string, unknown>;
+
+  if (key === "subjective") {
+    const parts: string[] = [];
+    const cc = typeof r.chief_complaint === "string" && r.chief_complaint !== "..." ? r.chief_complaint : "";
+    if (cc) parts.push(cc);
+    const hpi = formatSoapSection("hpi", r.history_of_present_illness);
+    if (hpi) parts.push(hpi);
+    const sym = formatSoapSection("symptoms", r.associated_symptoms);
+    if (sym) parts.push(`Symptoms:\n${sym}`);
+    const neg = formatSoapSection("neg", r.negative_symptoms);
+    if (neg) parts.push(`Denied:\n${neg}`);
+    return parts.filter(Boolean).join("\n\n");
+  }
+  if (key === "objective") {
+    const parts: string[] = [];
+    const vitals = formatSoapSection("vitals", r.vitals);
+    if (vitals) parts.push(`Vitals:\n${vitals}`);
+    const exam = formatSoapSection("exam", r.exam_findings);
+    if (exam) parts.push(`Exam:\n${exam}`);
+    const avail = formatSoapSection("avail", r.available_data);
+    if (avail) parts.push(`Data:\n${avail}`);
+    return parts.filter(Boolean).join("\n\n");
+  }
+  if (key === "assessment") {
+    const parts: string[] = [];
+    if (typeof r.summary === "string" && r.summary !== "...") parts.push(r.summary);
+    const issues = formatSoapSection("issues", r.possible_issues);
+    if (issues) parts.push(`Differential:\n${issues}`);
+    return parts.filter(Boolean).join("\n\n");
+  }
+  if (key === "plan") {
+    const parts: string[] = [];
+    const clarifs = formatSoapSection("clarifs", r.recommended_clarifications);
+    if (clarifs) parts.push(`Clarifications needed:\n${clarifs}`);
+    const instructions = formatSoapSection("instruct", r.patient_instructions_draft);
+    if (instructions) parts.push(`Patient instructions:\n${instructions}`);
+    return parts.filter(Boolean).join("\n\n");
+  }
+  return asText(value);
+}
+
 function getSoapSections(value: unknown): Array<{ title: string; body: string }> {
   if (!value) return [];
   if (typeof value === "string") return [{ title: "SOAP", body: value }];
@@ -177,7 +234,7 @@ function getSoapSections(value: unknown): Array<{ title: string; body: string }>
   const source = record.sections && typeof record.sections === "object"
     ? (record.sections as Record<string, unknown>) : record;
   const order = ["subjective", "objective", "assessment", "plan"];
-  const sections = order.map((key) => ({ title: key, body: asText(source[key]) }));
+  const sections = order.map((key) => ({ title: key, body: formatSoapSection(key, source[key]) }));
   const hasContent = sections.some((s) => s.body);
   return hasContent ? sections : [{ title: "SOAP", body: asText(value) }];
 }
@@ -187,7 +244,7 @@ function getUncertainWords(response: ScribeResponse | null): UncertainWord[] {
     if (!item || typeof item !== "object") return acc;
     const r = item as Record<string, unknown>;
     const text = asText(r.text ?? r.word ?? r.phrase);
-    if (!text) return acc;
+    if (!text || text === "..." || text.replace(/\./g, "").trim() === "") return acc;
     acc.push({
       id: asText(r.id),
       text,
@@ -376,7 +433,7 @@ function ThinkingStream() {
       <div className="mb-3 flex items-center gap-2">
         <Zap className="h-3.5 w-3.5 text-accent-500" />
         <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-          Fanar Pipeline B
+          Fanar AI · Processing
         </p>
         <LoaderCircle className="ml-auto h-3.5 w-3.5 animate-spin text-accent-400" />
       </div>
@@ -401,16 +458,13 @@ function PipelineBadge({ pipeline }: { pipeline: ScribeResponse["pipeline"] }) {
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-50 px-3 py-1 text-xs font-semibold text-accent-600">
         <Zap className="h-3 w-3" />
-        Fanar · {fanarCalls} step{fanarCalls !== 1 ? "s" : ""}
+        Fanar AI · {(totalMs / 1000).toFixed(1)}s
       </span>
       {fallbackCalls > 0 && (
         <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-          Groq fallback · {fallbackCalls}
+          Partial fallback
         </span>
       )}
-      <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-500">
-        {(totalMs / 1000).toFixed(1)}s total
-      </span>
     </div>
   );
 }
@@ -738,7 +792,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
         manualTranscript, response: data
       });
       setLastRunId(persistence.runId);
-      setStorageStatus(persistence.error ? `Local result ready. Supabase: ${persistence.error}` : "Saved to Supabase.");
+      setStorageStatus(persistence.error ? "" : "Saved.");
 
       const promptPayload = { encounterId, patientRecordNumber, physicianQuestions: data.physician_questions, uncertainty: data.uncertainty, scribeResponse: data };
       const ghostResponse = await sendPhysicianPromptGhost(promptPayload);
@@ -991,7 +1045,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                     words={uncertainWords}
                   />
                 </div>
-                {translationText && <p className="mt-4 text-sm leading-6 text-zinc-500">{translationText}</p>}
                 {uncertainWords.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {uncertainWords.map((w) => (
@@ -1113,9 +1166,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
 
             {/* Physician Review — shown in right panel after note generation */}
             {result && (
-              <div ref={physicianReviewRef} className="flex-shrink-0 border-b border-zinc-200 px-5 py-4 space-y-3">
+              <div ref={physicianReviewRef} className="flex-shrink-0 border-b border-zinc-200 px-4 py-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold uppercase text-zinc-950">Physician Review</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Physician Review</h3>
                   {reviewPrompts.length > 0 && answeredPromptCount < reviewPrompts.length && (
                     <span className="text-xs text-zinc-400">{answeredPromptCount}/{reviewPrompts.length} answered</span>
                   )}
@@ -1127,8 +1180,8 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                     <p className="text-sm text-emerald-800">All checkpoints resolved ✓</p>
                   </div>
                 ) : currentPrompt ? (
-                  <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                  <article className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
                       {currentPrompt.priority && (
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
                           currentPrompt.priority === "critical" ? "bg-red-100 text-red-700"
@@ -1140,12 +1193,9 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                         <p className="text-xs font-semibold uppercase text-amber-800">{currentPrompt.title}</p>
                       )}
                     </div>
-                    <p className="text-sm font-medium leading-6 text-zinc-950">{currentPrompt.question}</p>
-                    {currentPrompt.reason && (
-                      <p className="mt-1 text-xs leading-5 text-zinc-500">{currentPrompt.reason}</p>
-                    )}
+                    <p className="text-sm font-medium leading-5 text-zinc-950">{currentPrompt.question}</p>
                     {currentPrompt.options.length > 0 && (
-                      <div className="mt-3 space-y-1.5">
+                      <div className="mt-2 space-y-1">
                         {currentPrompt.options.map((option) => (
                           <button
                             key={`${currentPrompt.id}-${option.value}`}
@@ -1161,7 +1211,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                         ))}
                       </div>
                     )}
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-1.5 flex gap-2">
                       <input
                         value={promptInputs[currentPrompt.id] ?? ""}
                         onChange={(e) => setPromptInputs((prev) => ({ ...prev, [currentPrompt.id]: e.target.value }))}
@@ -1172,7 +1222,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                             if (text) handlePromptAnswer(currentPrompt, { text });
                           }
                         }}
-                        className="min-h-[40px] min-w-0 flex-1 rounded-app border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-950"
+                        className="min-h-[36px] min-w-0 flex-1 rounded-app border border-zinc-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-zinc-950"
                         placeholder="Or type a correction…"
                       />
                       <button
@@ -1182,7 +1232,7 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                           if (text) handlePromptAnswer(currentPrompt, { text });
                         }}
                         disabled={!promptInputs[currentPrompt.id]?.trim()}
-                        className="min-h-[40px] rounded-app bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
+                        className="min-h-[36px] rounded-app bg-zinc-950 px-3 text-sm font-medium text-white hover:bg-accent-600 disabled:opacity-40"
                       >
                         Save
                       </button>
