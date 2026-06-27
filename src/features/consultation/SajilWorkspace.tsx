@@ -26,7 +26,6 @@ import {
   Zap
 } from "lucide-react";
 import {
-  fetchDemo,
   processScribe,
   respondToPhysicianPrompt,
   type LogprobData,
@@ -94,23 +93,7 @@ type UncertainWord = {
   score?: number;
 };
 
-type PipelineAnimStep = {
-  name: string;
-  label: string;
-  status: "pending" | "running" | "done" | "failed";
-  provider?: string;
-  duration_ms?: number;
-  fallback?: boolean;
-};
-
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const PIPELINE_STEP_DEFS: { name: string; label: string }[] = [
-  { name: "translation", label: "Dialect translation" },
-  { name: "soap_generation", label: "SOAP generation" },
-  { name: "uncertainty", label: "Uncertainty scoring" },
-  { name: "claim_evaluation", label: "Claim evidence" }
-];
 
 const SUPPORTED_AUDIO_TYPES = new Set([
   "audio/mp3", "audio/mpeg", "audio/wav", "audio/x-wav",
@@ -733,28 +716,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     setIsSubmitting(true);
     setStorageStatus("");
 
-    const demoConfig = selectedDemo ? DEMO_CONFIGS.find((d) => d.key === selectedDemo) : null;
-
-    if (demoConfig) {
-      // Demo mode: call cached API endpoint (10s server delay simulates real processing)
-      try {
-        const data = await fetchDemo(demoConfig.key);
-        setResult(data);
-        setInputOpen(false);
-        setOutputOpen(false);
-        setPromptAnswers({});
-        setPromptInputs({});
-        setStorageStatus("Demo mode — cached Pipeline B result.");
-        addChatMessage({ role: "assistant", content: "Note ready." });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Demo fetch failed");
-      } finally {
-        setIsSubmitting(false);
-      }
-      return;
-    }
-
-    // Real mode
     const sourceMode: ScribeSourceMode = inputMode === "manual" ? "manual_transcript" : "audio";
     const consultationTime = new Date().toISOString();
 

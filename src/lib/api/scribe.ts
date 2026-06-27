@@ -154,17 +154,6 @@ export async function respondToPhysicianPrompt(input: PhysicianPromptResponseInp
   return response.json() as Promise<PromptResponse>;
 }
 
-export async function fetchDemo(key: string): Promise<ScribeResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/demo/${encodeURIComponent(key)}`);
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Demo fetch failed with ${response.status}`);
-  }
-
-  return response.json() as Promise<ScribeResponse>;
-}
-
 export async function runNoteAction(actionId: string) {
   const response = await fetch(`${API_BASE_URL}/api/v1/scribe/note-actions/${encodeURIComponent(actionId)}`, {
     method: "POST"
