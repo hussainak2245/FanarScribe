@@ -74,8 +74,8 @@ class ScribeService:
         patient_record_number: str,
         encounter_id: str,
         consultation_time: str,
-        _doctor_id: Optional[str],
-        _language_hint: str,
+        doctor_id: Optional[str],
+        language_hint: str,
         dialect_hint: str,
         note_format: str,
         privacy_mode: str,
@@ -302,8 +302,9 @@ class ScribeService:
             step.finish()
             return result
         except Exception as fanar_err:
-            step.finish(error=str(fanar_err))
-            warnings.append(f"Fanar STT failed — falling back to Groq Whisper: {fanar_err}")
+            fanar_error = str(fanar_err)
+            step.finish(error=fanar_error)
+            warnings.append(f"Fanar STT failed — falling back to Groq Whisper: {fanar_error}")
 
         # Groq Whisper last resort
         step_fb = pipeline.start_step("transcription_fallback", "groq_whisper",
@@ -315,7 +316,7 @@ class ScribeService:
             return result
         except Exception as groq_err:
             step_fb.finish(error=str(groq_err))
-            raise RuntimeError(f"All STT providers failed — Fanar: {fanar_err}; Groq: {groq_err}") from groq_err
+            raise RuntimeError(f"All STT providers failed — Fanar: {fanar_error}; Groq: {groq_err}") from groq_err
 
     def _run_check(
         self,

@@ -1,10 +1,25 @@
+import os
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, Body, UploadFile, File, Form, HTTPException
+
+from fastapi import APIRouter, Body, UploadFile, File, Form, Header, HTTPException
+from app.core.config import get_settings
 from app.schemas.scribe import PromptAnswerRequest
 from app.services.scribe_service import ScribeService
 
 router = APIRouter()
-scribe_service = ScribeService()
+
+
+def _build_scribe_service(
+    x_debug_fanar_api_key: Optional[str] = None,
+    x_debug_groq_api_key: Optional[str] = None,
+) -> ScribeService:
+    if x_debug_fanar_api_key:
+        os.environ["FANAR_API_KEY"] = x_debug_fanar_api_key
+    if x_debug_groq_api_key:
+        os.environ["GROQ_API_KEY"] = x_debug_groq_api_key
+    if x_debug_fanar_api_key or x_debug_groq_api_key:
+        get_settings.cache_clear()
+    return ScribeService()
 
 @router.post("/process")
 async def process_scribe(
@@ -20,15 +35,18 @@ async def process_scribe(
     source_mode: str = Form("audio"),
     patient_context_json: Optional[str] = Form(None),
     manual_transcript: Optional[str] = Form(None),
+    x_debug_fanar_api_key: Optional[str] = Header(None),
+    x_debug_groq_api_key: Optional[str] = Header(None),
 ):
     try:
+        scribe_service = _build_scribe_service(x_debug_fanar_api_key, x_debug_groq_api_key)
         return await scribe_service.process(
             audio_file=audio_file,
             patient_record_number=patient_record_number,
             encounter_id=encounter_id,
             consultation_time=consultation_time,
-            _doctor_id=doctor_id,
-            _language_hint=language_hint,
+            doctor_id=doctor_id,
+            language_hint=language_hint,
             dialect_hint=dialect_hint,
             note_format=note_format,
             privacy_mode=privacy_mode,
@@ -45,6 +63,7 @@ async def process_scribe(
 @router.post("/prompt-response")
 async def answer_prompt(request: PromptAnswerRequest):
     try:
+        scribe_service = _build_scribe_service()
         return scribe_service.respond_to_prompt(request.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
