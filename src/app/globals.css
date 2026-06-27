@@ -234,6 +234,62 @@ select {
   border-radius: 2px;
 }
 
+/* ── Quill hero: idle float, scroll fade-out, hover interaction ─────────── */
+
+@keyframes quill-float {
+  0%   { transform: translateY(0px) rotate(-2deg); }
+  50%  { transform: translateY(-10px) rotate(2deg); }
+  100% { transform: translateY(0px) rotate(-2deg); }
+}
+
+/* Scroll-triggered fade/fly — toggled by JS via .quill-exit class */
+.quill-scroll-fade {
+  will-change: transform, opacity;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  opacity: 1;
+  transform: translateY(0px);
+}
+
+.quill-scroll-fade.quill-exit {
+  opacity: 0;
+  transform: translateY(-40px);
+}
+
+/* Hover: scale + clockwise rotate; also pauses the child float animation */
+.quill-hover-wrapper {
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.quill-hover-wrapper:hover {
+  transform: scale(1.05) rotate(6deg);
+}
+
+.quill-hover-wrapper:hover .quill-float {
+  animation-play-state: paused;
+}
+
+/* Idle float animation */
+.quill-float {
+  display: inline-block;
+  will-change: transform;
+  transform-origin: center center;
+  animation: quill-float 4.5s ease-in-out infinite;
+}
+
+/* Blend the light-gray image background into the white hero */
+.quill-image {
+  mix-blend-mode: multiply;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quill-float       { animation: none; }
+  .quill-scroll-fade { transition: none; }
+  .quill-hover-wrapper { transition: none; }
+}
+
+/* ── Global reduced-motion fallback ─────────────────────────────────────── */
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
