@@ -1,6 +1,7 @@
 # SAJIL — سجل
 
-Website: sajil.vercel.app
+Website: https://sajil.vercel.app/
+
 Experiment Notebook: https://colab.research.google.com/drive/1au_HEmAiq-B4YOuvwBus5LWDpBvAVF8N?usp=sharing
 
 ### Arabic-first clinical scribe powered by Fanar
