@@ -1,0 +1,120 @@
+{
+  "request_id": "demo_sarah_ghaida_59_jor_syr",
+  "status": "completed",
+  "pipeline_version": "B",
+  "mandatory_review": false,
+  "partial_check": false,
+  "models_used": {
+    "transcription": {"provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1"},
+    "check": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "soap_generation": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "eval": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "judge": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "qeval": {"provider": "fanar", "model": "Fanar-S-1-7B"}
+  },
+  "transcription": {
+    "language_detected": "ar",
+    "dialect_hint": "levantine",
+    "raw_text": "دكتورة، أنا عندي حرارة وبرد وتعب شديد، وعندي ألم بالمفاصل وصداع، وعمري تسعة وخمسين سنة",
+    "cleaned_text": "دكتورة، أنا عندي حرارة وبرد وتعب شديد، وعندي ألم بالمفاصل وصداع، وعمري تسعة وخمسين سنة",
+    "segments": [
+      {"id": "seg_001", "speaker": "patient", "start": 0.0, "end": 9.2, "text": "دكتورة، أنا عندي حرارة وبرد وتعب شديد، وعندي ألم بالمفاصل وصداع، وعمري تسعة وخمسين سنة", "confidence": 0.92}
+    ]
+  },
+  "uncertain_words": [
+    {"id": "uw_001", "text": "برد", "score": 0.72, "level": "medium_uncertainty", "type": "dialect_ambiguity", "possible_meanings": ["chills/rigors (systemic infection)", "common cold", "feeling cold (subjective)"], "reason": "Levantine برد can mean chills (rigor) or a common cold — clinical distinction is critical with fever"},
+    {"id": "uw_002", "text": "تعب شديد", "score": 0.68, "level": "medium_uncertainty", "type": "dialect_ambiguity", "possible_meanings": ["severe physical fatigue", "malaise (systemic)", "functional decline"], "reason": "Severity qualifier — helps stratify sepsis risk vs viral syndrome"}
+  ],
+  "soap_note": {
+    "overall_quality_level": "good",
+    "subjective": {
+      "chief_complaint": "Acute febrile illness with chills, severe fatigue, polyarthralgia, and headache — 59-year-old female",
+      "history_of_present_illness": ["Fever (حرارة)", "Chills (برد) — rigor vs subjective cold unclear", "Severe fatigue and malaise (تعب شديد)", "Polyarthralgia (ألم بالمفاصل)", "Headache (صداع)", "Age 59, female"],
+      "associated_symptoms": ["Fever", "Chills", "Polyarthralgia", "Headache"],
+      "negative_symptoms": ["No rash mentioned", "No lymphadenopathy mentioned", "No cough mentioned"],
+      "patient_words": ["حرارة وبرد", "تعب شديد", "ألم بالمفاصل", "صداع"]
+    },
+    "objective": {
+      "vitals": [],
+      "exam_findings": ["Temperature, BP, and systemic examination pending", "Lymphadenopathy, rash, and joint swelling not yet assessed"],
+      "available_data": []
+    },
+    "assessment": {
+      "summary": "Acute febrile illness with systemic features — viral syndrome most likely (influenza, COVID-19). Connective tissue disease or early sepsis must be considered given polyarthralgia and severity.",
+      "possible_issues": ["Viral syndrome (influenza, COVID-19)", "Connective tissue disease (SLE, RA flare)", "Early sepsis", "Dengue (if travel history)"],
+      "unsupported_or_inferred": ["CTD considered given polyarthralgia — requires ANA/RF screen", "Sepsis considered given severe fatigue — requires clinical reassessment"]
+    },
+    "plan": {
+      "recommended_clarifications": ["Full blood count, CRP, ESR", "Blood cultures if febrile >38.5°C", "COVID-19 and influenza rapid testing", "ANA, RF, anti-CCP if symptoms persist >7 days"],
+      "patient_instructions_draft": ["Supportive care — rest and hydration", "Antipyretics as needed", "Return if symptoms worsen or fever persists >72 hours", "Empirical antibiotics only if bacterial source identified"]
+    }
+  },
+  "claims": [
+    {"id": "claim_001", "text": "Viral syndrome most likely given acute onset and systemic features", "status": "inferred", "evidence_level": "weakly_supported", "sources": ["seg_001"]},
+    {"id": "claim_002", "text": "CTD must be considered given polyarthralgia in 59-year-old female with systemic features", "status": "supported", "evidence_level": "supported", "sources": ["seg_001"]},
+    {"id": "claim_003", "text": "Early sepsis in differential — severity of fatigue warrants clinical reassessment", "status": "inferred", "evidence_level": "inferred", "sources": ["seg_001"]}
+  ],
+  "logprob_data": {
+    "avg_logprob": -0.91,
+    "normalised_score": 0.818,
+    "below_threshold": false,
+    "token_count": 308,
+    "top_uncertain_tokens": [
+      {"token": "برد", "logprob": -1.64},
+      {"token": "شديد", "logprob": -1.53}
+    ]
+  },
+  "self_eval": {
+    "overall_score": 0.81,
+    "overall_level": "good",
+    "dimensions": {
+      "transcription_quality": {"score": 0.90, "level": "very_good", "note": "Levantine Jordanian-Syrian dialect clearly transcribed"},
+      "dialect_coverage":     {"score": 0.80, "level": "good", "note": "برد ambiguity correctly flagged"},
+      "clinical_extraction":  {"score": 0.82, "level": "good", "note": "All systemic symptoms captured"},
+      "evidence_support":     {"score": 0.75, "level": "good", "note": "Viral syndrome well-supported, CTD appropriately raised"},
+      "completeness":         {"score": 0.72, "level": "good", "note": "Travel history and skin/lymph exam missing"}
+    },
+    "summary": "Good note. برد (chills vs cold) distinction is clinically relevant — confirm whether patient had rigors."
+  },
+  "uncertainty": {
+    "overall_score": 0.81,
+    "overall_level": "good",
+    "overall_label": "Good confidence",
+    "summary": "Reliable note. Key ambiguity is whether برد represents true rigors (suggesting systemic infection) or subjective cold sensation.",
+    "claim_evaluations": [
+      {"claim_id": "claim_001", "evidence_level": "weakly_supported", "confidence": 0.75, "note": "Viral syndrome consistent but not confirmed"},
+      {"claim_id": "claim_002", "evidence_level": "supported", "confidence": 0.82, "note": "CTD appropriately flagged for 59F with polyarthralgia"},
+      {"claim_id": "claim_003", "evidence_level": "inferred", "confidence": 0.60, "note": "Sepsis is a differential but not strongly supported"}
+    ],
+    "dimensions": {
+      "transcription_quality": {"score": 0.90, "level": "very_good"},
+      "translation_quality":   {"score": 0.82, "level": "good"},
+      "clinical_extraction":   {"score": 0.80, "level": "good"},
+      "evidence_support":      {"score": 0.75, "level": "good"},
+      "clinical_completeness": {"score": 0.68, "level": "needs_review"}
+    }
+  },
+  "physician_questions": [
+    {
+      "id": "q_001", "priority": "high", "type": "single_choice",
+      "title": "Chills character",
+      "question": "Did the patient describe true rigors (shaking/uncontrollable shivering) or just feeling cold (برد)?",
+      "reason": "Rigors suggest bacteraemia or high-grade viral infection — changes management urgency",
+      "linked_uncertain_word_ids": ["uw_001"],
+      "linked_claim_ids": ["claim_001", "claim_003"],
+      "options": [{"label": "Rigors (shaking chills)", "value": "rigors"}, {"label": "Feeling cold only", "value": "feeling_cold"}, {"label": "Unclear from consultation", "value": "unclear"}]
+    },
+    {
+      "id": "q_002", "priority": "medium", "type": "single_choice",
+      "title": "Joint involvement",
+      "question": "How many joints are affected and is there visible swelling (ألم بالمفاصل)?",
+      "reason": "Oligoarthralgia vs polyarthralgia changes differential (reactive vs viral vs CTD)",
+      "linked_uncertain_word_ids": [],
+      "linked_claim_ids": ["claim_002"],
+      "options": [{"label": "1-3 joints — large joints", "value": "oligo_large"}, {"label": "4+ joints — small joints", "value": "poly_small"}, {"label": "Diffuse — all joints", "value": "diffuse"}]
+    }
+  ],
+  "question_eval": {"overall_score": 6, "overall_grade": "strong", "question_scores": [{"question_id": "q_001", "score": 7, "grade": "strong"}, {"question_id": "q_002", "score": 6, "grade": "strong"}]},
+  "pipeline": {"total_ms": 18900, "fanar_calls": 5, "fallback_calls": 0, "steps": [{"step": "transcription", "provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1", "status": "completed", "duration_ms": 2100}, {"step": "check", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 4000}, {"step": "soap_generation", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 4500}, {"step": "eval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3600}, {"step": "judge", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3100}, {"step": "qeval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 1600}]},
+  "warnings": []
+}

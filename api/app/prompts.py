@@ -1,18 +1,301 @@
 """
 LLM prompt templates for the FanarScribe pipeline.
 
-The generation pipeline uses three focused prompts instead of one monolithic call:
-  1. build_translate_prompt   — dialect normalisation + clinical translation + uncertain words
-  2. build_soap_prompt        — SOAP note + evidence-linked claims
-  3. build_uncertainty_prompt — claim-evidence scoring + physician questions
+Pipeline B (production) — Fanar-S-1-7B for all LLM steps:
+  1. (STT)                  — Fanar-Aura-STT-LF-1 (handled by FanarSTTService)
+  2. build_check_prompt     — dialect/uncertain word identification
+  3. build_soap_prompt      — SOAP note + evidence-linked claims (with logprobs=True)
+  4. build_eval_prompt      — 5-dimension self-scoring (receives logprob_data)
+  5. build_judge_prompt     — final verdict + physician questions (3 signals: self-eval, logprob, tokens)
+  6. build_qeval_prompt     — physician question quality scoring (0-8)
 
+Legacy prompts (build_translate_prompt, build_uncertainty_prompt) kept for compatibility.
 build_prompt_response_prompt handles physician copilot follow-ups.
 """
 import json
 from typing import Any, Dict, List, Optional
 
 
-# ── Step 2: Dialect normalisation + clinical translation ──────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Pipeline B prompts (steps 2-6)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Pipeline B Step 2: Dialect / uncertain word check ─────────────────────────
+
+def build_check_prompt(transcript: str, dialect_hint: str) -> str:
+    return f"""You are FanarScribe dialect analyser.
+Return ONLY valid JSON. No markdown. No explanation outside the JSON.
+
+Task:
+Analyse this Arabic clinical consultation transcript.
+Identify every word or phrase that is:
+- Dialect-specific with multiple plausible clinical meanings (most important)
+- Likely a transcription error or mishearing
+- Clinically ambiguous without further context
+
+Rules:
+- Prioritise dialect_ambiguity — Gulf terms like كتمة, ضيقة, دوخة, خفقان often have 2-3 clinical meanings.
+- Keep possible_meanings concise (2-3 items max).
+- Do not flag grammatical particles or prepositions.
+- If the transcript is clear and unambiguous, return uncertain_words as [].
+
+Dialect hint: {dialect_hint}
+Transcript: {transcript}
+
+Return JSON with exactly this key: uncertain_words
+
+{{
+  "uncertain_words": [
+    {{
+      "id": "uw_001",
+      "text": "...",
+      "segment_id": "seg_001",
+      "score": 0.85,
+      "level": "high_uncertainty|medium_uncertainty|low_uncertainty",
+      "type": "dialect_ambiguity|transcription_noise|clinical_inference",
+      "possible_meanings": ["...", "..."],
+      "reason": "..."
+    }}
+  ]
+}}"""
+
+
+# ── Pipeline B Step 4: Self-eval (5 dimensions + logprob context) ──────────────
+
+def build_eval_prompt(
+    transcript: str,
+    soap_note: Dict[str, Any],
+    claims: List[Dict[str, Any]],
+    logprob_data: Dict[str, Any],
+) -> str:
+    soap_summary = json.dumps(
+        {
+            "overall_quality_level": soap_note.get("overall_quality_level"),
+            "subjective": {
+                "chief_complaint": soap_note.get("subjective", {}).get("chief_complaint", ""),
+                "associated_symptoms": soap_note.get("subjective", {}).get("associated_symptoms", [])[:4],
+            },
+            "assessment": {"summary": soap_note.get("assessment", {}).get("summary", "")},
+        },
+        ensure_ascii=False,
+        indent=None,
+    )
+    claims_summary = json.dumps(
+        [{"id": c.get("id"), "text": c.get("text"), "status": c.get("status")} for c in claims[:8]],
+        ensure_ascii=False,
+        indent=None,
+    )
+    logprob_context = json.dumps(
+        {
+            "normalised_score": logprob_data.get("normalised_score"),
+            "below_threshold": logprob_data.get("below_threshold"),
+            "token_count": logprob_data.get("token_count"),
+            "top_uncertain_tokens": logprob_data.get("top_uncertain_tokens", [])[:5],
+        },
+        ensure_ascii=False,
+    )
+    return f"""You are FanarScribe self-evaluator.
+Return ONLY valid JSON. No markdown. No explanation outside the JSON.
+
+Task:
+Score the quality of this SOAP note generation across 5 dimensions.
+Use the logprob data as an additional signal — low logprob scores mean the model
+was uncertain about specific tokens; those should lower your confidence scores.
+
+Scoring scale 0.0–1.0:
+  very_good  ≥ 0.85
+  good       ≥ 0.70
+  needs_review ≥ 0.50
+  poor       ≥ 0.30
+  very_poor  < 0.30
+
+Transcript (Arabic):
+{transcript[:800]}
+
+SOAP summary:
+{soap_summary}
+
+Claims (sample):
+{claims_summary}
+
+Logprob data from SOAP generation:
+{logprob_context}
+
+Return JSON with exactly these top-level keys: self_eval
+
+{{
+  "self_eval": {{
+    "overall_score": 0.75,
+    "overall_level": "very_good|good|needs_review|poor|very_poor",
+    "dimensions": {{
+      "transcription_quality": {{"score": 0.80, "level": "good", "note": "..."}},
+      "dialect_coverage":     {{"score": 0.70, "level": "good", "note": "..."}},
+      "clinical_extraction":  {{"score": 0.75, "level": "good", "note": "..."}},
+      "evidence_support":     {{"score": 0.65, "level": "needs_review", "note": "..."}},
+      "completeness":         {{"score": 0.60, "level": "needs_review", "note": "..."}}
+    }},
+    "summary": "..."
+  }}
+}}"""
+
+
+# ── Pipeline B Step 5: Judge (3 signals → final verdict + physician questions) ──
+
+def build_judge_prompt(
+    transcript: str,
+    soap_note: Dict[str, Any],
+    self_eval: Dict[str, Any],
+    logprob_data: Dict[str, Any],
+    uncertain_words: List[Dict[str, Any]],
+) -> str:
+    signals = json.dumps(
+        {
+            "self_eval_score": self_eval.get("overall_score"),
+            "self_eval_level": self_eval.get("overall_level"),
+            "logprob_normalised_score": logprob_data.get("normalised_score"),
+            "logprob_below_threshold": logprob_data.get("below_threshold"),
+            "top_uncertain_tokens": logprob_data.get("top_uncertain_tokens", [])[:5],
+        },
+        ensure_ascii=False,
+    )
+    uncertain_summary = json.dumps(
+        [{"text": w.get("text"), "type": w.get("type"), "possible_meanings": w.get("possible_meanings", [])[:2]}
+         for w in uncertain_words[:6]],
+        ensure_ascii=False,
+    )
+    soap_summary = json.dumps(
+        {
+            "chief_complaint": soap_note.get("subjective", {}).get("chief_complaint", ""),
+            "assessment_summary": soap_note.get("assessment", {}).get("summary", ""),
+            "plan_items": soap_note.get("plan", {}).get("recommended_clarifications", [])[:3],
+        },
+        ensure_ascii=False,
+    )
+    return f"""You are FanarScribe judge.
+Return ONLY valid JSON. No markdown. No explanation outside the JSON.
+
+Task:
+You have three uncertainty signals for a clinical SOAP note:
+1. Self-eval score — the model's own assessment of its output
+2. Logprob score — token-level confidence (model-native, cannot be inflated)
+3. Uncertain words — dialect/clinical terms flagged during transcript analysis
+
+Synthesise these into a final confidence verdict and generate physician checkpoint
+questions for claims that need physician confirmation before the note ships.
+
+Rules:
+- Weight logprob_normalised_score most heavily (model-native, unbiased signal).
+- If logprob_below_threshold is true, final_level must be needs_review or worse.
+- Generate 2-4 physician questions — prefer specific clinical questions tied to
+  uncertain words or missing information, not generic checklists.
+- Questions must have clear clinical rationale and 2-3 MCQ options where possible.
+
+Three signals:
+{signals}
+
+Uncertain words:
+{uncertain_summary}
+
+SOAP context:
+{soap_summary}
+
+Transcript excerpt (Arabic):
+{transcript[:600]}
+
+Return JSON with exactly these top-level keys: uncertainty, physician_questions
+
+{{
+  "uncertainty": {{
+    "overall_score": 0.80,
+    "overall_level": "very_good|good|needs_review|poor|very_poor",
+    "overall_label": "...",
+    "summary": "...",
+    "signal_weights": {{
+      "logprob_contribution": 0.5,
+      "self_eval_contribution": 0.3,
+      "dialect_flags_contribution": 0.2
+    }},
+    "claim_evaluations": [
+      {{"claim_id": "claim_001", "evidence_level": "supported|weakly_supported|inferred|unsupported|contradicted", "confidence": 0.85, "note": "..."}}
+    ],
+    "dimensions": {{
+      "transcription_quality": {{"score": 0.80, "level": "good"}},
+      "translation_quality":   {{"score": 0.75, "level": "good"}},
+      "clinical_extraction":   {{"score": 0.70, "level": "good"}},
+      "evidence_support":      {{"score": 0.65, "level": "needs_review"}},
+      "clinical_completeness": {{"score": 0.50, "level": "needs_review"}}
+    }}
+  }},
+  "physician_questions": [
+    {{
+      "id": "q_001",
+      "priority": "high|medium|low",
+      "type": "single_choice|multiple_choice|yes_no|free_text|confirm_reject",
+      "title": "...",
+      "question": "...",
+      "reason": "...",
+      "linked_uncertain_word_ids": [],
+      "linked_claim_ids": [],
+      "options": [{{"label": "...", "value": "..."}}]
+    }}
+  ]
+}}"""
+
+
+# ── Pipeline B Step 6: Question quality evaluation (0-8 scale) ─────────────────
+
+def build_qeval_prompt(
+    physician_questions: List[Dict[str, Any]],
+    transcript: str,
+    soap_note: Dict[str, Any],
+) -> str:
+    questions_json = json.dumps(physician_questions[:6], ensure_ascii=False, indent=None)
+    chief_complaint = soap_note.get("subjective", {}).get("chief_complaint", "")
+    return f"""You are FanarScribe question evaluator.
+Return ONLY valid JSON. No markdown. No explanation outside the JSON.
+
+Task:
+Score the quality of these physician checkpoint questions on a 0-8 scale.
+
+Scoring criteria (1 point each):
+1. Directly references the transcript or specific uncertain term
+2. Has clear clinical rationale
+3. Offers specific MCQ options (not generic yes/no)
+4. Would actually change the note if answered
+5. Avoids generic checklists ("do you have fever?")
+6. Uses clinical terminology correctly
+7. Is appropriately prioritised (high = changes management)
+8. Is concise and answerable in under 30 seconds
+
+Grade thresholds:
+  strong: 6-8 points
+  ok: 3-5 points
+  weak: 0-2 points
+
+Chief complaint context: {chief_complaint}
+
+Questions to evaluate:
+{questions_json}
+
+Transcript excerpt:
+{transcript[:400]}
+
+Return JSON:
+{{
+  "question_scores": [
+    {{"question_id": "q_001", "score": 6, "grade": "strong|ok|weak", "notes": "..."}}
+  ],
+  "overall_score": 5,
+  "overall_grade": "strong|ok|weak",
+  "improvement_suggestion": "..."
+}}"""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Legacy prompts (kept for compatibility / reference)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Step 2 (legacy): Dialect normalisation + clinical translation ──────────────
 
 def build_translate_prompt(transcript: str, dialect_hint: str) -> str:
     return f"""You are FanarScribe, an Arabic-first clinical scribe.

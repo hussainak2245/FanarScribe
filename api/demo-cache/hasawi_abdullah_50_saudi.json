@@ -1,0 +1,118 @@
+{
+  "request_id": "demo_hasawi_abdullah_50_saudi",
+  "status": "completed",
+  "pipeline_version": "B",
+  "mandatory_review": false,
+  "partial_check": false,
+  "models_used": {
+    "transcription": {"provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1"},
+    "check": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "soap_generation": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "eval": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "judge": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "qeval": {"provider": "fanar", "model": "Fanar-S-1-7B"}
+  },
+  "transcription": {
+    "language_detected": "ar",
+    "dialect_hint": "gulf",
+    "raw_text": "يا طبيب عندي وجع في مفاصلي من كثر، الركبة والكاحل يوجعونني خاصة الصبح لما أقوم، وأحياناً تتورم",
+    "cleaned_text": "يا طبيب عندي وجع في مفاصلي من كثر، الركبة والكاحل يوجعونني خاصة الصبح لما أقوم، وأحياناً تتورم",
+    "segments": [
+      {"id": "seg_001", "speaker": "patient", "start": 0.0, "end": 10.1, "text": "يا طبيب عندي وجع في مفاصلي من كثر، الركبة والكاحل يوجعونني خاصة الصبح لما أقوم، وأحياناً تتورم", "confidence": 0.87}
+    ]
+  },
+  "uncertain_words": [
+    {"id": "uw_001", "text": "من كثر", "score": 0.60, "level": "low_uncertainty", "type": "dialect_ambiguity", "possible_meanings": ["for a long time (months)", "recently worsened", "chronically"], "reason": "Hasawi dialect — duration ambiguous"},
+    {"id": "uw_002", "text": "تتورم", "score": 0.86, "level": "high_uncertainty", "type": "clinical_inference", "possible_meanings": ["synovial swelling (inflammatory)", "periarticular oedema", "post-traumatic swelling"], "reason": "Swelling character determines inflammatory vs mechanical aetiology"}
+  ],
+  "soap_note": {
+    "overall_quality_level": "good",
+    "subjective": {
+      "chief_complaint": "Bilateral knee and ankle joint pain with morning stiffness and intermittent swelling",
+      "history_of_present_illness": ["Bilateral joint pain (مفاصل)", "Knee (ركبة) and ankle (كاحل) involvement", "Predominantly morning (خاصة الصبح)", "Intermittent swelling (تتورم)", "Duration: من كثر — indeterminate (Hasawi dialect)"],
+      "associated_symptoms": ["Morning stiffness", "Joint swelling"],
+      "negative_symptoms": ["No skin rash mentioned", "No eye symptoms mentioned"],
+      "patient_words": ["وجع في مفاصلي", "من كثر", "خاصة الصبح", "تتورم"]
+    },
+    "objective": {
+      "vitals": [],
+      "exam_findings": ["Joint examination pending", "No current medications listed"],
+      "available_data": []
+    },
+    "assessment": {
+      "summary": "Inflammatory arthropathy — rheumatoid arthritis vs. seronegative arthritis most likely. Morning stiffness and bilateral ankle involvement suggest inflammatory aetiology.",
+      "possible_issues": ["Rheumatoid arthritis", "Seronegative arthritis (psoriatic, reactive)", "Gout", "Osteoarthritis (less likely given ankle involvement and morning stiffness)"],
+      "unsupported_or_inferred": ["Inflammatory aetiology inferred from morning stiffness pattern — exam required to confirm"]
+    },
+    "plan": {
+      "recommended_clarifications": ["ESR, CRP, RF, anti-CCP, uric acid, ANA", "X-rays of knees and ankles", "Rheumatology referral if inflammatory markers elevated"],
+      "patient_instructions_draft": ["NSAIDs for symptom relief if no contraindication", "Apply heat/ice to affected joints", "Follow-up with lab results in 1 week"]
+    }
+  },
+  "claims": [
+    {"id": "claim_001", "text": "Inflammatory arthropathy — morning stiffness pattern and bilateral ankle involvement suggest RA", "status": "inferred", "evidence_level": "weakly_supported", "sources": ["seg_001"]},
+    {"id": "claim_002", "text": "Swelling character (synovial vs oedema) determines management pathway", "status": "supported", "evidence_level": "supported", "sources": ["seg_001"]}
+  ],
+  "logprob_data": {
+    "avg_logprob": -0.88,
+    "normalised_score": 0.824,
+    "below_threshold": false,
+    "token_count": 329,
+    "top_uncertain_tokens": [
+      {"token": "تتورم", "logprob": -1.74},
+      {"token": "كثر", "logprob": -1.52}
+    ]
+  },
+  "self_eval": {
+    "overall_score": 0.80,
+    "overall_level": "good",
+    "dimensions": {
+      "transcription_quality": {"score": 0.85, "level": "good", "note": "Hasawi Gulf dialect captured well"},
+      "dialect_coverage":     {"score": 0.82, "level": "good", "note": "من كثر duration ambiguity flagged"},
+      "clinical_extraction":  {"score": 0.80, "level": "good", "note": "Morning stiffness pattern identified"},
+      "evidence_support":     {"score": 0.75, "level": "good", "note": "RA inference reasonable but needs labs"},
+      "completeness":         {"score": 0.68, "level": "needs_review", "note": "Skin, eye, family history not explored"}
+    },
+    "summary": "Good note. Swelling character (تتورم) is the key missing discriminator."
+  },
+  "uncertainty": {
+    "overall_score": 0.80,
+    "overall_level": "good",
+    "overall_label": "Good confidence",
+    "summary": "Morning stiffness pattern strongly suggests inflammatory aetiology, but swelling type needs physical exam to confirm.",
+    "claim_evaluations": [
+      {"claim_id": "claim_001", "evidence_level": "weakly_supported", "confidence": 0.74, "note": "Pattern consistent but not confirmed by exam"},
+      {"claim_id": "claim_002", "evidence_level": "supported", "confidence": 0.90, "note": "Well-established clinical distinction"}
+    ],
+    "dimensions": {
+      "transcription_quality": {"score": 0.85, "level": "good"},
+      "translation_quality":   {"score": 0.80, "level": "good"},
+      "clinical_extraction":   {"score": 0.78, "level": "good"},
+      "evidence_support":      {"score": 0.74, "level": "good"},
+      "clinical_completeness": {"score": 0.64, "level": "needs_review"}
+    }
+  },
+  "physician_questions": [
+    {
+      "id": "q_001", "priority": "high", "type": "single_choice",
+      "title": "Morning stiffness duration",
+      "question": "How long does morning stiffness (الصبح) last before improving?",
+      "reason": ">1 hour stiffness is a key RA diagnostic criterion",
+      "linked_uncertain_word_ids": [],
+      "linked_claim_ids": ["claim_001"],
+      "options": [{"label": "Under 30 minutes", "value": "under30"}, {"label": "30–60 minutes", "value": "30to60"}, {"label": "Over 1 hour", "value": "over60"}]
+    },
+    {
+      "id": "q_002", "priority": "high", "type": "single_choice",
+      "title": "Swelling type",
+      "question": "Is the swelling (تتورم) warm/red (suggesting synovitis) or diffuse and cool?",
+      "reason": "Warm synovial swelling confirms inflammatory vs mechanical/oedema",
+      "linked_uncertain_word_ids": ["uw_002"],
+      "linked_claim_ids": ["claim_002"],
+      "options": [{"label": "Warm and red (synovitis)", "value": "synovitis"}, {"label": "Diffuse and cool (oedema)", "value": "oedema"}, {"label": "Not sure", "value": "unknown"}]
+    }
+  ],
+  "question_eval": {"overall_score": 7, "overall_grade": "strong", "question_scores": [{"question_id": "q_001", "score": 8, "grade": "strong"}, {"question_id": "q_002", "score": 7, "grade": "strong"}]},
+  "pipeline": {"total_ms": 17800, "fanar_calls": 5, "fallback_calls": 0, "steps": [{"step": "transcription", "provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1", "status": "completed", "duration_ms": 2000}, {"step": "check", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3900}, {"step": "soap_generation", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 4300}, {"step": "eval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3500}, {"step": "judge", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 2900}, {"step": "qeval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 1200}]},
+  "warnings": []
+}

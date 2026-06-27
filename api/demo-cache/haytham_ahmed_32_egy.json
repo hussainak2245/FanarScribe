@@ -1,0 +1,118 @@
+{
+  "request_id": "demo_haytham_ahmed_32_egy",
+  "status": "completed",
+  "pipeline_version": "B",
+  "mandatory_review": false,
+  "partial_check": false,
+  "models_used": {
+    "transcription": {"provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1"},
+    "check": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "soap_generation": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "eval": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "judge": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "qeval": {"provider": "fanar", "model": "Fanar-S-1-7B"}
+  },
+  "transcription": {
+    "language_detected": "ar",
+    "dialect_hint": "egyptian",
+    "raw_text": "دكتور عندي كحة وزكام من أمس وعندي حرارة شوية وصداع في راسي وتعب عام",
+    "cleaned_text": "دكتور عندي كحة وزكام من أمس وعندي حرارة شوية وصداع في راسي وتعب عام",
+    "segments": [
+      {"id": "seg_001", "speaker": "patient", "start": 0.0, "end": 8.4, "text": "دكتور عندي كحة وزكام من أمس وعندي حرارة شوية وصداع في راسي وتعب عام", "confidence": 0.91}
+    ]
+  },
+  "uncertain_words": [
+    {"id": "uw_001", "text": "كحة", "score": 0.7, "level": "medium_uncertainty", "type": "dialect_ambiguity", "possible_meanings": ["dry cough", "productive cough"], "reason": "Severity and character unspecified"},
+    {"id": "uw_002", "text": "حرارة شوية", "score": 0.68, "level": "medium_uncertainty", "type": "clinical_inference", "possible_meanings": ["low-grade fever (<38.5°C)", "high fever"], "reason": "Temperature value not stated"}
+  ],
+  "soap_note": {
+    "overall_quality_level": "good",
+    "subjective": {
+      "chief_complaint": "Cough and cold since yesterday with low-grade fever and headache",
+      "history_of_present_illness": ["Onset yesterday", "Associated cough (كحة) — character unspecified", "Rhinorrhea (زكام)", "Low-grade fever (حرارة شوية)", "Headache (صداع)", "General malaise (تعب عام)"],
+      "associated_symptoms": ["Fever", "Headache", "General fatigue"],
+      "negative_symptoms": ["No chest pain reported", "No dyspnoea reported"],
+      "patient_words": ["كحة وزكام", "حرارة شوية", "صداع في راسي", "تعب عام"]
+    },
+    "objective": {
+      "vitals": [],
+      "exam_findings": ["Patient appears mildly unwell", "No respiratory distress observed"],
+      "available_data": []
+    },
+    "assessment": {
+      "summary": "Upper respiratory tract infection (URI), likely viral aetiology. Differential includes influenza.",
+      "possible_issues": ["Viral URI", "Influenza"],
+      "unsupported_or_inferred": ["Bacterial aetiology not supported without fever >39°C or purulent discharge"]
+    },
+    "plan": {
+      "recommended_clarifications": ["Confirm fever temperature", "Assess cough character (dry vs productive)"],
+      "patient_instructions_draft": ["Rest and adequate hydration", "Antipyretics PRN", "Return if fever exceeds 39°C or symptoms worsen after 5 days", "No antibiotic indicated at this stage"]
+    }
+  },
+  "claims": [
+    {"id": "claim_001", "text": "Viral URI most likely given acute onset and absence of focal signs", "status": "supported", "evidence_level": "supported", "sources": ["seg_001"]},
+    {"id": "claim_002", "text": "No antibiotic indicated", "status": "supported", "evidence_level": "weakly_supported", "sources": ["seg_001"]}
+  ],
+  "logprob_data": {
+    "avg_logprob": -0.82,
+    "normalised_score": 0.836,
+    "below_threshold": false,
+    "token_count": 312,
+    "top_uncertain_tokens": [
+      {"token": "كحة", "logprob": -1.62},
+      {"token": "شوية", "logprob": -1.71}
+    ]
+  },
+  "self_eval": {
+    "overall_score": 0.82,
+    "overall_level": "good",
+    "dimensions": {
+      "transcription_quality": {"score": 0.88, "level": "very_good", "note": "Clear Egyptian dialect, minimal noise"},
+      "dialect_coverage":     {"score": 0.80, "level": "good", "note": "كحة and حرارة flagged correctly"},
+      "clinical_extraction":  {"score": 0.82, "level": "good", "note": "All symptoms captured"},
+      "evidence_support":     {"score": 0.78, "level": "good", "note": "Assessment well-grounded in transcript"},
+      "completeness":         {"score": 0.72, "level": "good", "note": "Vitals and cough character missing"}
+    },
+    "summary": "Good quality note. Cough character and temperature should be confirmed."
+  },
+  "uncertainty": {
+    "overall_score": 0.82,
+    "overall_level": "good",
+    "overall_label": "Good confidence",
+    "summary": "Note is reliable. Two minor dialect ambiguities flagged for physician confirmation.",
+    "claim_evaluations": [
+      {"claim_id": "claim_001", "evidence_level": "supported", "confidence": 0.85, "note": "Consistent with clinical presentation"},
+      {"claim_id": "claim_002", "evidence_level": "weakly_supported", "confidence": 0.72, "note": "No viral confirmation yet"}
+    ],
+    "dimensions": {
+      "transcription_quality": {"score": 0.88, "level": "very_good"},
+      "translation_quality":   {"score": 0.82, "level": "good"},
+      "clinical_extraction":   {"score": 0.80, "level": "good"},
+      "evidence_support":      {"score": 0.78, "level": "good"},
+      "clinical_completeness": {"score": 0.72, "level": "good"}
+    }
+  },
+  "physician_questions": [
+    {
+      "id": "q_001", "priority": "high", "type": "single_choice",
+      "title": "Cough character",
+      "question": "Is the cough (كحة) dry or productive?",
+      "reason": "Character determines antibiotic decision and aetiology",
+      "linked_uncertain_word_ids": ["uw_001"],
+      "linked_claim_ids": ["claim_002"],
+      "options": [{"label": "Dry", "value": "dry"}, {"label": "Productive — clear", "value": "productive_clear"}, {"label": "Productive — coloured", "value": "productive_coloured"}]
+    },
+    {
+      "id": "q_002", "priority": "medium", "type": "single_choice",
+      "title": "Fever temperature",
+      "question": "Has temperature been measured? If so, what was it?",
+      "reason": "حرارة شوية is ambiguous — threshold of 38.5°C changes management",
+      "linked_uncertain_word_ids": ["uw_002"],
+      "linked_claim_ids": [],
+      "options": [{"label": "Below 38°C", "value": "below38"}, {"label": "38–38.9°C", "value": "38to39"}, {"label": "Above 39°C", "value": "above39"}, {"label": "Not measured", "value": "unknown"}]
+    }
+  ],
+  "question_eval": {"overall_score": 6, "overall_grade": "strong", "question_scores": [{"question_id": "q_001", "score": 7, "grade": "strong", "notes": "Directly tied to uncertain word and management decision"}, {"question_id": "q_002", "score": 6, "grade": "strong", "notes": "Clinical threshold clearly stated"}]},
+  "pipeline": {"total_ms": 18200, "fanar_calls": 5, "fallback_calls": 0, "steps": [{"step": "transcription", "provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1", "status": "completed", "duration_ms": 2100}, {"step": "check", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3800}, {"step": "soap_generation", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 4200}, {"step": "eval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3600}, {"step": "judge", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3100}, {"step": "qeval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 1400}]},
+  "warnings": []
+}

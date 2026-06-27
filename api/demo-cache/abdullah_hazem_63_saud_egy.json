@@ -1,0 +1,132 @@
+{
+  "request_id": "demo_abdullah_hazem_63_saud_egy",
+  "status": "completed",
+  "pipeline_version": "B",
+  "mandatory_review": true,
+  "partial_check": false,
+  "models_used": {
+    "transcription": {"provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1"},
+    "check": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "soap_generation": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "eval": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "judge": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "qeval": {"provider": "fanar", "model": "Fanar-S-1-7B"}
+  },
+  "transcription": {
+    "language_detected": "ar",
+    "dialect_hint": "gulf",
+    "raw_text": "دكتور عندي ألم في صدري من أمس، وأحس بثقل على قلبي وضيقة، وأنا عندي ضغط وسكري",
+    "cleaned_text": "دكتور عندي ألم في صدري من أمس، وأحس بثقل على قلبي وضيقة، وأنا عندي ضغط وسكري",
+    "segments": [
+      {"id": "seg_001", "speaker": "patient", "start": 0.0, "end": 9.4, "text": "دكتور عندي ألم في صدري من أمس، وأحس بثقل على قلبي وضيقة، وأنا عندي ضغط وسكري", "confidence": 0.90}
+    ]
+  },
+  "uncertain_words": [
+    {"id": "uw_001", "text": "ألم في صدري", "score": 0.95, "level": "high_uncertainty", "type": "clinical_inference", "possible_meanings": ["angina / NSTEMI", "GERD", "musculoskeletal"], "reason": "In 63M with DM+HTN — ACS must be excluded urgently before other differentials considered"},
+    {"id": "uw_002", "text": "ثقل على قلبي", "score": 0.90, "level": "high_uncertainty", "type": "dialect_ambiguity", "possible_meanings": ["pressure-type chest pain (cardiac)", "anxiety/palpitations", "GERD"], "reason": "Gulf expression — pressure sensation raises ACS concern substantially"},
+    {"id": "uw_003", "text": "ضيقة", "score": 0.85, "level": "high_uncertainty", "type": "dialect_ambiguity", "possible_meanings": ["dyspnoea (cardiac)", "chest tightness", "anxiety"], "reason": "Associated with chest pain in high-risk patient — could indicate LV dysfunction"}
+  ],
+  "soap_note": {
+    "overall_quality_level": "needs_review",
+    "subjective": {
+      "chief_complaint": "Chest pain since yesterday with pressure sensation and chest tightness — HTN and DM",
+      "history_of_present_illness": ["Chest pain (ألم في صدري) onset yesterday", "Pressure/heaviness sensation (ثقل على قلبي)", "Associated chest tightness (ضيقة)", "Known hypertension", "Known type 2 diabetes mellitus", "No radiation described", "Duration: since yesterday (24h)"],
+      "associated_symptoms": ["Pressure sensation", "Chest tightness"],
+      "negative_symptoms": ["No radiation described in transcript", "No diaphoresis mentioned", "No nausea mentioned"],
+      "patient_words": ["ألم في صدري", "ثقل على قلبي", "ضيقة", "ضغط وسكري"]
+    },
+    "objective": {
+      "vitals": [],
+      "exam_findings": ["URGENT: ECG, troponin, and vital signs required immediately"],
+      "available_data": ["Known HTN", "Known T2DM"]
+    },
+    "assessment": {
+      "summary": "Chest pain in high-risk patient (63M, HTN, DM) — acute coronary syndrome must be excluded urgently. Differential includes GERD, musculoskeletal, or anxiety.",
+      "possible_issues": ["ACS (NSTEMI/STEMI) — urgent exclusion required", "Unstable angina", "GERD", "Musculoskeletal", "Anxiety"],
+      "unsupported_or_inferred": ["Cardiac aetiology inferred from risk profile — not confirmed", "GERD and musculoskeletal are exclusion diagnoses"]
+    },
+    "plan": {
+      "recommended_clarifications": ["URGENT: 12-lead ECG immediately", "High-sensitivity troponin at 0 and 3 hours", "Aspirin 300mg if ACS not excluded", "Continuous cardiac monitoring"],
+      "patient_instructions_draft": ["NPO pending cardiac evaluation", "Cardiology review urgently", "Do not delay — ACS risk is high in this profile"]
+    }
+  },
+  "claims": [
+    {"id": "claim_001", "text": "ACS must be excluded urgently in 63M with HTN, DM, and chest pain with pressure sensation", "status": "supported", "evidence_level": "supported", "sources": ["seg_001"]},
+    {"id": "claim_002", "text": "Aspirin 300mg indicated if ACS not excluded", "status": "inferred", "evidence_level": "inferred", "sources": ["seg_001"]},
+    {"id": "claim_003", "text": "Pressure-type chest pain with tightness in DM patient — atypical presentations more common", "status": "supported", "evidence_level": "weakly_supported", "sources": ["seg_001"]}
+  ],
+  "logprob_data": {
+    "avg_logprob": -1.58,
+    "normalised_score": 0.684,
+    "below_threshold": true,
+    "token_count": 294,
+    "top_uncertain_tokens": [
+      {"token": "ثقل", "logprob": -2.01},
+      {"token": "قلبي", "logprob": -1.89},
+      {"token": "ضيقة", "logprob": -1.76},
+      {"token": "ألم", "logprob": -1.65}
+    ]
+  },
+  "self_eval": {
+    "overall_score": 0.67,
+    "overall_level": "needs_review",
+    "dimensions": {
+      "transcription_quality": {"score": 0.88, "level": "very_good", "note": "Mixed Gulf-Egyptian dialect, clear recording"},
+      "dialect_coverage":     {"score": 0.82, "level": "good", "note": "ثقل على قلبي and ضيقة flagged as critical"},
+      "clinical_extraction":  {"score": 0.80, "level": "good", "note": "ACS risk correctly identified"},
+      "evidence_support":     {"score": 0.60, "level": "needs_review", "note": "Diagnosis requires ECG/troponin — cannot be supported by transcript alone"},
+      "completeness":         {"score": 0.48, "level": "poor", "note": "Radiation, diaphoresis, nausea, prior cardiac history not established"}
+    },
+    "summary": "URGENT case — note quality is secondary to getting ECG/troponin. Multiple critical data points missing."
+  },
+  "uncertainty": {
+    "overall_score": 0.67,
+    "overall_level": "needs_review",
+    "overall_label": "Mandatory physician review — ACS not excluded",
+    "summary": "Logprob below threshold (0.684) and 3 critical dialect-ambiguous terms on cardiac symptoms. ACS not excluded — mandatory physician review before note finalises.",
+    "claim_evaluations": [
+      {"claim_id": "claim_001", "evidence_level": "supported", "confidence": 0.92, "note": "Risk profile strongly supports ACS exclusion protocol"},
+      {"claim_id": "claim_002", "evidence_level": "inferred", "confidence": 0.70, "note": "Standard ACS protocol — ECG must be done first"},
+      {"claim_id": "claim_003", "evidence_level": "weakly_supported", "confidence": 0.65, "note": "DM patients can have atypical presentations"}
+    ],
+    "dimensions": {
+      "transcription_quality": {"score": 0.88, "level": "very_good"},
+      "translation_quality":   {"score": 0.75, "level": "good"},
+      "clinical_extraction":   {"score": 0.78, "level": "good"},
+      "evidence_support":      {"score": 0.58, "level": "needs_review"},
+      "clinical_completeness": {"score": 0.42, "level": "poor"}
+    }
+  },
+  "physician_questions": [
+    {
+      "id": "q_001", "priority": "high", "type": "single_choice",
+      "title": "Pain radiation",
+      "question": "Does the chest pain (ألم في صدري) radiate to arm, jaw, or back?",
+      "reason": "Radiation pattern is a key discriminator for ACS — absent in transcript",
+      "linked_uncertain_word_ids": ["uw_001"],
+      "linked_claim_ids": ["claim_001"],
+      "options": [{"label": "Left arm", "value": "left_arm"}, {"label": "Jaw", "value": "jaw"}, {"label": "Back / interscapular", "value": "back"}, {"label": "No radiation", "value": "none"}]
+    },
+    {
+      "id": "q_002", "priority": "high", "type": "yes_no",
+      "title": "Diaphoresis",
+      "question": "Is the patient diaphoretic (sweating)?",
+      "reason": "Diaphoresis with chest pain and pressure sensation raises STEMI concern",
+      "linked_uncertain_word_ids": [],
+      "linked_claim_ids": ["claim_001"],
+      "options": [{"label": "Yes — sweating", "value": "yes"}, {"label": "No", "value": "no"}]
+    },
+    {
+      "id": "q_003", "priority": "high", "type": "yes_no",
+      "title": "Prior cardiac history",
+      "question": "Does the patient have a prior history of MI, angina, or PCI/CABG?",
+      "reason": "Prior cardiac history significantly changes pre-test probability for ACS",
+      "linked_uncertain_word_ids": [],
+      "linked_claim_ids": ["claim_001"],
+      "options": [{"label": "Yes — prior cardiac event", "value": "yes"}, {"label": "No known cardiac history", "value": "no"}]
+    }
+  ],
+  "question_eval": {"overall_score": 8, "overall_grade": "strong", "question_scores": [{"question_id": "q_001", "score": 8, "grade": "strong"}, {"question_id": "q_002", "score": 8, "grade": "strong"}, {"question_id": "q_003", "score": 8, "grade": "strong"}]},
+  "pipeline": {"total_ms": 19800, "fanar_calls": 5, "fallback_calls": 0, "steps": [{"step": "transcription", "provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1", "status": "completed", "duration_ms": 2400}, {"step": "check", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 4200}, {"step": "soap_generation", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 4600}, {"step": "eval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3800}, {"step": "judge", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3300}, {"step": "qeval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 1500}]},
+  "warnings": ["Mixed Gulf-Egyptian dialect — logprob below threshold on critical cardiac terms"]
+}

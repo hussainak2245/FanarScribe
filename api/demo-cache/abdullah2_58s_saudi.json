@@ -1,0 +1,119 @@
+{
+  "request_id": "demo_abdullah2_58s_saudi",
+  "status": "completed",
+  "pipeline_version": "B",
+  "mandatory_review": false,
+  "partial_check": false,
+  "models_used": {
+    "transcription": {"provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1"},
+    "check": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "soap_generation": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "eval": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "judge": {"provider": "fanar", "model": "Fanar-S-1-7B"},
+    "qeval": {"provider": "fanar", "model": "Fanar-S-1-7B"}
+  },
+  "transcription": {
+    "language_detected": "ar",
+    "dialect_hint": "gulf",
+    "raw_text": "يا دكتور أنا مريض سكري وضغط من عشر سنين، الحين السكر مو متحكم فيه، وعندي ألم في رجلي من تحت وخاصة بالليل",
+    "cleaned_text": "يا دكتور أنا مريض سكري وضغط من عشر سنين، الحين السكر مو متحكم فيه، وعندي ألم في رجلي من تحت وخاصة بالليل",
+    "segments": [
+      {"id": "seg_001", "speaker": "patient", "start": 0.0, "end": 11.2, "text": "يا دكتور أنا مريض سكري وضغط من عشر سنين، الحين السكر مو متحكم فيه، وعندي ألم في رجلي من تحت وخاصة بالليل", "confidence": 0.88}
+    ]
+  },
+  "uncertain_words": [
+    {"id": "uw_001", "text": "مو متحكم", "score": 0.88, "level": "high_uncertainty", "type": "dialect_ambiguity", "possible_meanings": ["HbA1c >8%", "uncontrolled fasting glucose", "subjective feeling"], "reason": "No lab values provided — Gulf colloquialism with multiple clinical meanings"},
+    {"id": "uw_002", "text": "ألم في رجلي من تحت", "score": 0.85, "level": "high_uncertainty", "type": "clinical_inference", "possible_meanings": ["peripheral neuropathy", "peripheral vascular disease", "musculoskeletal"], "reason": "Radiation pattern and character unspecified"}
+  ],
+  "soap_note": {
+    "overall_quality_level": "good",
+    "subjective": {
+      "chief_complaint": "Uncontrolled diabetes with lower limb pain, especially nocturnal",
+      "history_of_present_illness": ["10-year history of T2DM and hypertension", "Reports poor glycaemic control (مو متحكم فيه)", "Bilateral lower limb pain, below knee (من تحت)", "Predominantly nocturnal"],
+      "associated_symptoms": ["Nocturnal leg pain", "Poor glucose control"],
+      "negative_symptoms": ["No ulcers mentioned", "No visual changes mentioned"],
+      "patient_words": ["مو متحكم فيه", "ألم في رجلي من تحت", "خاصة بالليل"]
+    },
+    "objective": {
+      "vitals": [],
+      "exam_findings": ["Neurological and vascular lower limb exam pending"],
+      "available_data": ["10 years T2DM + HTN history"]
+    },
+    "assessment": {
+      "summary": "Type 2 diabetes mellitus — poorly controlled. Probable diabetic peripheral neuropathy. Hypertension — control status unclear.",
+      "possible_issues": ["Diabetic peripheral neuropathy", "Peripheral vascular disease", "Poorly controlled T2DM", "Hypertension — status unclear"],
+      "unsupported_or_inferred": ["Peripheral neuropathy inferred from nocturnal leg pain pattern — not confirmed by exam"]
+    },
+    "plan": {
+      "recommended_clarifications": ["Obtain recent HbA1c and fasting glucose", "Assess current antidiabetic regimen", "Monofilament test for neuropathy", "Review BP readings"],
+      "patient_instructions_draft": ["Review diabetes medications at next visit", "Nerve conduction study if monofilament positive", "Consider gabapentin or pregabalin if neuropathy confirmed", "BP follow-up at next visit"]
+    }
+  },
+  "claims": [
+    {"id": "claim_001", "text": "Probable diabetic peripheral neuropathy based on nocturnal lower limb pain in T2DM patient", "status": "supported", "evidence_level": "weakly_supported", "sources": ["seg_001"]},
+    {"id": "claim_002", "text": "Poor glycaemic control — HbA1c likely elevated", "status": "inferred", "evidence_level": "inferred", "sources": ["seg_001"]}
+  ],
+  "logprob_data": {
+    "avg_logprob": -1.12,
+    "normalised_score": 0.776,
+    "below_threshold": false,
+    "token_count": 378,
+    "top_uncertain_tokens": [
+      {"token": "مو", "logprob": -1.58},
+      {"token": "متحكم", "logprob": -1.63},
+      {"token": "من تحت", "logprob": -1.71}
+    ]
+  },
+  "self_eval": {
+    "overall_score": 0.77,
+    "overall_level": "good",
+    "dimensions": {
+      "transcription_quality": {"score": 0.84, "level": "good", "note": "Gulf dialect captured well"},
+      "dialect_coverage":     {"score": 0.78, "level": "good", "note": "مو متحكم and من تحت flagged"},
+      "clinical_extraction":  {"score": 0.80, "level": "good", "note": "Neuropathy pattern identified"},
+      "evidence_support":     {"score": 0.70, "level": "good", "note": "Neuropathy is inferred, needs exam"},
+      "completeness":         {"score": 0.68, "level": "needs_review", "note": "HbA1c and BP values missing"}
+    },
+    "summary": "Good note. Lab values needed to confirm glycaemic control status."
+  },
+  "uncertainty": {
+    "overall_score": 0.77,
+    "overall_level": "good",
+    "overall_label": "Good confidence",
+    "summary": "Neuropathy diagnosis is inferred — requires examination and lab confirmation.",
+    "claim_evaluations": [
+      {"claim_id": "claim_001", "evidence_level": "weakly_supported", "confidence": 0.72, "note": "Consistent but not confirmed"},
+      {"claim_id": "claim_002", "evidence_level": "inferred", "confidence": 0.65, "note": "No lab values available"}
+    ],
+    "dimensions": {
+      "transcription_quality": {"score": 0.84, "level": "good"},
+      "translation_quality":   {"score": 0.78, "level": "good"},
+      "clinical_extraction":   {"score": 0.76, "level": "good"},
+      "evidence_support":      {"score": 0.70, "level": "good"},
+      "clinical_completeness": {"score": 0.62, "level": "needs_review"}
+    }
+  },
+  "physician_questions": [
+    {
+      "id": "q_001", "priority": "high", "type": "single_choice",
+      "title": "Last HbA1c",
+      "question": "What was the most recent HbA1c result?",
+      "reason": "مو متحكم is subjective — lab value determines management escalation",
+      "linked_uncertain_word_ids": ["uw_001"],
+      "linked_claim_ids": ["claim_002"],
+      "options": [{"label": "Below 7%", "value": "below7"}, {"label": "7–8%", "value": "7to8"}, {"label": "Above 8%", "value": "above8"}, {"label": "Not available", "value": "na"}]
+    },
+    {
+      "id": "q_002", "priority": "high", "type": "single_choice",
+      "title": "Leg pain character",
+      "question": "How would you describe the lower leg pain (ألم في رجلي من تحت)?",
+      "reason": "Character differentiates neuropathy from vascular claudication",
+      "linked_uncertain_word_ids": ["uw_002"],
+      "linked_claim_ids": ["claim_001"],
+      "options": [{"label": "Burning / electric (neuropathic)", "value": "neuropathic"}, {"label": "Cramping on walking (vascular)", "value": "vascular"}, {"label": "Aching at rest", "value": "rest_ache"}]
+    }
+  ],
+  "question_eval": {"overall_score": 7, "overall_grade": "strong", "question_scores": [{"question_id": "q_001", "score": 7, "grade": "strong"}, {"question_id": "q_002", "score": 7, "grade": "strong"}]},
+  "pipeline": {"total_ms": 19400, "fanar_calls": 5, "fallback_calls": 0, "steps": [{"step": "transcription", "provider": "fanar_stt", "model": "Fanar-Aura-STT-LF-1", "status": "completed", "duration_ms": 2300}, {"step": "check", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 4100}, {"step": "soap_generation", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 4600}, {"step": "eval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3700}, {"step": "judge", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 3200}, {"step": "qeval", "provider": "fanar", "model": "Fanar-S-1-7B", "status": "completed", "duration_ms": 1500}]},
+  "warnings": []
+}

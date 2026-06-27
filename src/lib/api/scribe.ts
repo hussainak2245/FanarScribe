@@ -33,9 +33,23 @@ export type ProcessScribeInput = {
   patientContextJson?: string;
 };
 
+export type LogprobToken = {
+  token: string;
+  logprob: number;
+};
+
+export type LogprobData = {
+  avg_logprob: number | null;
+  normalised_score: number | null;
+  below_threshold: boolean;
+  token_count: number;
+  top_uncertain_tokens: LogprobToken[];
+};
+
 export type ScribeResponse = {
   request_id?: string;
   status?: string;
+  pipeline_version?: string;
   audio?: unknown;
   speaker_context?: unknown;
   models_used?: unknown;
@@ -55,6 +69,13 @@ export type ScribeResponse = {
   frontend_hints?: unknown;
   providers_used?: unknown;
   pipeline?: Record<string, unknown>;
+  // Pipeline B fields
+  logprob_data?: LogprobData;
+  self_eval?: unknown;
+  question_eval?: unknown;
+  mandatory_review?: boolean;
+  partial_check?: boolean;
+  warnings?: string[];
 };
 
 export type PromptResponse = {
@@ -131,6 +152,17 @@ export async function respondToPhysicianPrompt(input: PhysicianPromptResponseInp
   }
 
   return response.json() as Promise<PromptResponse>;
+}
+
+export async function fetchDemo(key: string): Promise<ScribeResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/demo/${encodeURIComponent(key)}`);
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Demo fetch failed with ${response.status}`);
+  }
+
+  return response.json() as Promise<ScribeResponse>;
 }
 
 export async function runNoteAction(actionId: string) {

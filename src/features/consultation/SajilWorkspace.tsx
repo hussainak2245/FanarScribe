@@ -26,8 +26,10 @@ import {
   Zap
 } from "lucide-react";
 import {
+  fetchDemo,
   processScribe,
   respondToPhysicianPrompt,
+  type LogprobData,
   type PromptResponse,
   type ScribeResponse,
   type ScribeSourceMode
@@ -123,218 +125,17 @@ type DemoConfig = {
   label: string;
   dialect: string;
   file: string;
-  fakeResult: ScribeResponse;
 };
 
 const DEMO_CONFIGS: DemoConfig[] = [
-  {
-    key: "haytham_ahmed_32_egy",
-    label: "🇪🇬 Egyptian",
-    dialect: "egyptian",
-    file: "haytham_ahmed_32_egy.mp3",
-    fakeResult: {
-      transcription: "دكتور عندي كحة وزكام من أمس وعندي حرارة شوية وصداع في راسي وتعب عام",
-      translation: "Doctor, I have a cough and cold since yesterday, some fever, headache, and general fatigue.",
-      soap_note: {
-        sections: {
-          subjective: "32-year-old male presents with cough, rhinorrhea, low-grade fever, headache, and general malaise onset yesterday. No chest pain or dyspnea reported.",
-          objective: "Vitals pending. Patient appears mildly unwell. No respiratory distress observed.",
-          assessment: "Upper respiratory tract infection (URI), likely viral aetiology. Differential includes influenza.",
-          plan: "Supportive care: rest, adequate hydration, antipyretics PRN. Advise return if fever exceeds 39°C or symptoms worsen after 5 days. No antibiotic indicated at this stage."
-        }
-      },
-      uncertain_words: [
-        { text: "كحة", risk: "medium", possible_meanings: ["dry cough", "productive cough"], reason: "Severity and character unspecified" },
-        { text: "حرارة شوية", risk: "medium", possible_meanings: ["low-grade fever (<38.5°C)", "high fever"], reason: "Temperature value not stated" }
-      ],
-      physician_prompts: [
-        { id: "p1", type: "single_choice", title: "Cough character", question: "Is the cough dry or productive?", options: [{ label: "Dry", value: "dry" }, { label: "Productive — clear", value: "productive_clear" }, { label: "Productive — coloured", value: "productive_coloured" }] }
-      ],
-      pipeline: { total_ms: 18200, fanar_calls: 4, fallback_calls: 0 }
-    } as unknown as ScribeResponse
-  },
-  {
-    key: "abdullah2_58s_saudi",
-    label: "🇸🇦 Gulf",
-    dialect: "gulf",
-    file: "abdullah2_58s_saudi.mp3",
-    fakeResult: {
-      transcription: "يا دكتور أنا مريض سكري وضغط من عشر سنين، الحين السكر مو متحكم فيه، وعندي ألم في رجلي من تحت وخاصة بالليل",
-      translation: "Doctor, I have diabetes and hypertension for ten years. My sugar is not controlled right now, and I have pain in my lower legs especially at night.",
-      soap_note: {
-        sections: {
-          subjective: "58-year-old male with 10-year history of type 2 diabetes mellitus and hypertension. Reports poor glycaemic control and bilateral lower limb pain, predominantly nocturnal. Suggests possible peripheral neuropathy.",
-          objective: "Current medications and recent HbA1c not provided. Lower limb neurological exam pending.",
-          assessment: "Type 2 diabetes mellitus — poorly controlled. Probable diabetic peripheral neuropathy. Hypertension — control status unclear.",
-          plan: "Review HbA1c and fasting glucose. Assess current antidiabetic regimen for dose optimisation. Neuropathy workup: monofilament test, nerve conduction if indicated. Initiate neuropathic pain management if confirmed (e.g. gabapentin or pregabalin). BP review at next visit."
-        }
-      },
-      uncertain_words: [
-        { text: "مو متحكم", risk: "high", possible_meanings: ["HbA1c >8%", "uncontrolled fasting glucose", "subjective feeling"], reason: "No lab values provided" },
-        { text: "ألم في رجلي من تحت", risk: "high", possible_meanings: ["peripheral neuropathy", "peripheral vascular disease", "musculoskeletal"], reason: "Requires examination to differentiate" }
-      ],
-      physician_prompts: [
-        { id: "p1", type: "single_choice", title: "Last HbA1c", question: "What was the most recent HbA1c result?", options: [{ label: "Below 7%", value: "below7" }, { label: "7–8%", value: "7to8" }, { label: "Above 8%", value: "above8" }, { label: "Not available", value: "na" }] }
-      ],
-      pipeline: { total_ms: 19400, fanar_calls: 4, fallback_calls: 0 }
-    } as unknown as ScribeResponse
-  },
-  {
-    key: "farah_leila_43_jor_syr",
-    label: "🇸🇾 Levantine",
-    dialect: "levantine",
-    file: "farah_leila_43_jor_syr.mp3",
-    fakeResult: {
-      transcription: "دكتورة رح أحكيلك، عندي صداع مزمن من شهرين، وتعب وإرهاق كتير، وأحياناً دوخة وما بقدر أنام منيح",
-      translation: "Doctor, I'll tell you — I have had chronic headaches for two months, a lot of fatigue and exhaustion, sometimes dizziness, and I cannot sleep well.",
-      soap_note: {
-        sections: {
-          subjective: "43-year-old female reports 2-month history of chronic headaches, significant fatigue and exhaustion, intermittent dizziness, and insomnia. No reported trauma or focal neurological symptoms.",
-          objective: "Neurological exam and vital signs pending. Thyroid status unknown.",
-          assessment: "Chronic headache syndrome — tension-type most likely; migraine to exclude. Fatigue and insomnia: consider anaemia, hypothyroidism, depression, or sleep disorder.",
-          plan: "Full blood count, thyroid function tests, iron studies, and fasting glucose. PHQ-9 screening for depression. Sleep hygiene counselling. Headache diary. Follow-up in 2 weeks with results."
-        }
-      },
-      uncertain_words: [
-        { text: "تعب وإرهاق", risk: "medium", possible_meanings: ["physical fatigue", "emotional exhaustion", "anaemia-related"], reason: "Broad symptom — requires differentials" },
-        { text: "دوخة", risk: "medium", possible_meanings: ["vertigo", "presyncope", "lightheadedness"], reason: "Character of dizziness unspecified" }
-      ],
-      physician_prompts: [
-        { id: "p1", type: "single_choice", title: "Headache location", question: "Where is the headache located?", options: [{ label: "Bilateral — pressure-like", value: "bilateral" }, { label: "Unilateral — throbbing", value: "unilateral" }, { label: "Occipital", value: "occipital" }] }
-      ],
-      pipeline: { total_ms: 20100, fanar_calls: 4, fallback_calls: 0 }
-    } as unknown as ScribeResponse
-  },
-  {
-    key: "hasawi_abdullah_50_saudi",
-    label: "🇸🇦 Hasawi Gulf",
-    dialect: "gulf",
-    file: "hasawi_abdullah_50_saudi.mp3",
-    fakeResult: {
-      transcription: "يا طبيب عندي وجع في مفاصلي من كثر، الركبة والكاحل يوجعونني خاصة الصبح لما أقوم، وأحياناً تتورم",
-      translation: "Doctor, I have had joint pain for a while — my knee and ankle hurt especially in the morning when I get up, and they sometimes swell.",
-      soap_note: {
-        sections: {
-          subjective: "50-year-old male presents with bilateral joint pain affecting knees and ankles, worse in the morning with associated intermittent swelling. Morning stiffness pattern suggests inflammatory aetiology.",
-          objective: "Joint examination pending. No current medications listed.",
-          assessment: "Inflammatory arthropathy — rheumatoid arthritis vs. seronegative arthritis (e.g. psoriatic, reactive). Osteoarthritis less likely given bilateral ankle involvement and morning stiffness pattern.",
-          plan: "ESR, CRP, RF, anti-CCP, uric acid, ANA. X-rays of knees and ankles. Rheumatology referral if inflammatory markers elevated. NSAIDs for symptom relief if no contraindication."
-        }
-      },
-      uncertain_words: [
-        { text: "من كثر", risk: "low", possible_meanings: ["for a long time (months)", "recently worsened"], reason: "Duration ambiguous in Hasawi dialect" },
-        { text: "تتورم", risk: "high", possible_meanings: ["synovial swelling (inflammatory)", "periarticular oedema", "post-traumatic"], reason: "Swelling character determines management" }
-      ],
-      physician_prompts: [
-        { id: "p1", type: "single_choice", title: "Morning stiffness", question: "How long does morning stiffness last?", options: [{ label: "Under 30 minutes", value: "under30" }, { label: "30–60 minutes", value: "30to60" }, { label: "Over 1 hour", value: "over60" }] }
-      ],
-      pipeline: { total_ms: 17800, fanar_calls: 4, fallback_calls: 0 }
-    } as unknown as ScribeResponse
-  },
-  {
-    key: "haytham_rafoush_71_egy_syr",
-    label: "🇸🇾 Egy · Syr",
-    dialect: "egyptian",
-    file: "haytham_rafoush_71_egy_syr.mp3",
-    fakeResult: {
-      transcription: "أنا عندي ضيقة في النفس من شوية، بيزيد لما بمشي أو بصعد السلم، ومعايا كحة يابسة، وعمري ٧١ وبدخن من زمان",
-      translation: "I have had shortness of breath for a while. It gets worse when I walk or climb stairs, with a dry cough. I am 71 and have smoked for a long time.",
-      soap_note: {
-        sections: {
-          subjective: "71-year-old male with long-term smoking history presents with progressive exertional dyspnea and chronic dry cough. Symptoms worsen with ambulation and stair climbing. No haemoptysis reported.",
-          objective: "Respiratory exam pending. SpO₂ and spirometry not yet performed.",
-          assessment: "Likely COPD exacerbation or progression given age, smoking history, and exertional dyspnoea pattern. Lung malignancy must be excluded. Heart failure in differential.",
-          plan: "Spirometry with bronchodilator reversibility. Chest X-ray. CT chest if X-ray inconclusive or malignancy suspected. Refer to pulmonology. Advise smoking cessation urgently. Influenza and pneumococcal vaccination status to review."
-        }
-      },
-      uncertain_words: [
-        { text: "ضيقة في النفس", risk: "critical", possible_meanings: ["dyspnoea on exertion (COPD)", "acute heart failure", "pulmonary embolism"], reason: "Critical symptom — aetiology must be determined urgently" },
-        { text: "من شوية", risk: "medium", possible_meanings: ["days", "weeks", "months"], reason: "Chronicity affects urgency and management" }
-      ],
-      physician_prompts: [
-        { id: "p1", type: "single_choice", title: "Dyspnoea onset", question: "How long has the dyspnoea been present?", options: [{ label: "Days (acute)", value: "days" }, { label: "Weeks (subacute)", value: "weeks" }, { label: "Months — progressive", value: "months" }] }
-      ],
-      pipeline: { total_ms: 21300, fanar_calls: 4, fallback_calls: 0 }
-    } as unknown as ScribeResponse
-  },
-  {
-    key: "abdullah_hazem_63_saud_egy",
-    label: "🇪🇬 Gulf · Egy",
-    dialect: "gulf",
-    file: "abdullah&hazem_63_saud_egy.mp3",
-    fakeResult: {
-      transcription: "دكتور عندي ألم في صدري من أمس، وأحس بثقل على قلبي وضيقة، وأنا عندي ضغط وسكري",
-      translation: "Doctor, I have had chest pain since yesterday with a heavy feeling on my chest and tightness. I have hypertension and diabetes.",
-      soap_note: {
-        sections: {
-          subjective: "63-year-old male with known hypertension and type 2 diabetes presents with chest pain and heaviness onset yesterday. Reports associated chest tightness. No radiation described. Cardiac risk profile elevated.",
-          objective: "ECG, troponin, and vital signs urgently required. Cardiac exam pending.",
-          assessment: "Chest pain in high-risk patient (63M, HTN, DM) — acute coronary syndrome must be excluded urgently. Differential includes GERD, musculoskeletal, or anxiety.",
-          plan: "URGENT: 12-lead ECG immediately. High-sensitivity troponin at 0 and 3 hours. Aspirin 300mg if ACS not excluded. Continuous cardiac monitoring. Cardiology review. NPO pending evaluation."
-        }
-      },
-      uncertain_words: [
-        { text: "ألم في صدري", risk: "critical", possible_meanings: ["angina", "NSTEMI", "GERD", "musculoskeletal"], reason: "In 63-year-old with DM+HTN, ACS must be excluded urgently" },
-        { text: "ثقل على قلبي", risk: "high", possible_meanings: ["pressure sensation (cardiac)", "anxiety", "GERD"], reason: "Pressure-type chest symptoms raise ACS concern" }
-      ],
-      physician_prompts: [
-        { id: "p1", type: "single_choice", title: "Pain radiation", question: "Does the pain radiate to the arm, jaw, or back?", options: [{ label: "Radiates to left arm", value: "left_arm" }, { label: "Radiates to jaw", value: "jaw" }, { label: "No radiation", value: "none" }] }
-      ],
-      pipeline: { total_ms: 19800, fanar_calls: 4, fallback_calls: 0 }
-    } as unknown as ScribeResponse
-  },
-  {
-    key: "jawad_ghazline_67_morocco",
-    label: "🇲🇦 Moroccan",
-    dialect: "msa",
-    file: "jawad_ghazline_67_morocco.mp3",
-    fakeResult: {
-      transcription: "طبيب، عندي ألم في ظهري من مدة طويلة، وخاصة في الجزء السفلي، وأحياناً يمتد للرجل اليمنى، وعمري سبعة وستين سنة",
-      translation: "Doctor, I have had lower back pain for a long time, and sometimes it extends down to my right leg. I am 67 years old.",
-      soap_note: {
-        sections: {
-          subjective: "67-year-old male with chronic lower back pain extending to the right leg, suggesting possible radiculopathy. Duration described as prolonged. No bladder or bowel symptoms reported.",
-          objective: "Neurological and musculoskeletal examination pending. Gait and straight leg raise test not performed.",
-          assessment: "Lumbar radiculopathy — likely L4/L5 or L5/S1 nerve root. Differential: lumbar stenosis, disc herniation. Osteoporosis risk high given age.",
-          plan: "Lumbar spine X-ray. MRI lumbar spine if neurological signs present. DEXA scan for bone density. Physiotherapy referral. NSAIDs with gastroprotection. Neurosurgery referral if conservative management fails after 6 weeks."
-        }
-      },
-      uncertain_words: [
-        { text: "من مدة طويلة", risk: "medium", possible_meanings: ["months", "years", "chronic (>3 months)"], reason: "Chronicity influences investigation urgency" },
-        { text: "يمتد للرجل اليمنى", risk: "high", possible_meanings: ["true radiculopathy (nerve root)", "referred pain", "vascular claudication"], reason: "Radiation pattern guides diagnosis" }
-      ],
-      physician_prompts: [
-        { id: "p1", type: "single_choice", title: "Pain character", question: "Does the leg pain follow a dermatomal pattern (shooting/electric)?", options: [{ label: "Yes — shooting electric pain", value: "radicular" }, { label: "Diffuse aching", value: "diffuse" }, { label: "Worse on walking only", value: "claudication" }] }
-      ],
-      pipeline: { total_ms: 18600, fanar_calls: 4, fallback_calls: 0 }
-    } as unknown as ScribeResponse
-  },
-  {
-    key: "sarah_ghaida_59_jor_syr",
-    label: "🇸🇾 Levantine · F",
-    dialect: "levantine",
-    file: "sarah_ghaida_59_jor_syr.mp3",
-    fakeResult: {
-      transcription: "دكتورة، أنا عندي حرارة وبرد وتعب شديد، وعندي ألم بالمفاصل وصداع، وعمري تسعة وخمسين سنة",
-      translation: "Doctor, I have fever, chills, severe fatigue, joint pain, and a headache. I am 59 years old.",
-      soap_note: {
-        sections: {
-          subjective: "59-year-old female presents with fever, chills, severe fatigue, polyarthralgia, and headache. Systemic symptoms suggest infectious or inflammatory aetiology.",
-          objective: "Temperature, BP, and systemic examination pending. Lymphadenopathy, rash, and joint swelling not yet assessed.",
-          assessment: "Acute febrile illness with systemic features — viral syndrome most likely (influenza, COVID-19). Connective tissue disease or early sepsis must be considered given polyarthralgia and severity.",
-          plan: "Full blood count, CRP, ESR, blood cultures if febrile >38.5°C. COVID-19 and influenza rapid testing. Rheumatological screen if symptoms persist: ANA, RF, anti-CCP. Supportive care. Empirical antibiotics only if bacterial source identified."
-        }
-      },
-      uncertain_words: [
-        { text: "برد", risk: "medium", possible_meanings: ["chills/rigors (systemic infection)", "common cold", "subjective cold feeling"], reason: "Rigors vs. subjective chills — different clinical significance" },
-        { text: "تعب شديد", risk: "medium", possible_meanings: ["extreme fatigue (sepsis risk)", "moderate malaise (viral)"], reason: "Severity grading affects triage decision" }
-      ],
-      physician_prompts: [
-        { id: "p1", type: "single_choice", title: "Fever severity", question: "What is the measured temperature?", options: [{ label: "Under 38°C", value: "low" }, { label: "38–39°C", value: "moderate" }, { label: "Above 39°C", value: "high" }] }
-      ],
-      pipeline: { total_ms: 20400, fanar_calls: 4, fallback_calls: 0 }
-    } as unknown as ScribeResponse
-  },
+  { key: "haytham_ahmed_32_egy",       label: "🇪🇬 Egyptian",      dialect: "egyptian",  file: "haytham_ahmed_32_egy.mp3" },
+  { key: "abdullah2_58s_saudi",        label: "🇸🇦 Gulf",          dialect: "gulf",      file: "abdullah2_58s_saudi.mp3" },
+  { key: "farah_leila_43_jor_syr",     label: "🇸🇾 Levantine",     dialect: "levantine", file: "farah_leila_43_jor_syr.mp3" },
+  { key: "hasawi_abdullah_50_saudi",   label: "🇸🇦 Hasawi Gulf",   dialect: "gulf",      file: "hasawi_abdullah_50_saudi.mp3" },
+  { key: "haytham_rafoush_71_egy_syr", label: "🇸🇾 Egy · Syr",    dialect: "egyptian",  file: "haytham_rafoush_71_egy_syr.mp3" },
+  { key: "abdullah_hazem_63_saud_egy", label: "🇪🇬 Gulf · Egy",   dialect: "gulf",      file: "abdullah&hazem_63_saud_egy.mp3" },
+  { key: "jawad_ghazline_67_morocco",  label: "🇲🇦 Moroccan",     dialect: "msa",       file: "jawad_ghazline_67_morocco.mp3" },
+  { key: "sarah_ghaida_59_jor_syr",   label: "🇸🇾 Levantine · F", dialect: "levantine", file: "sarah_ghaida_59_jor_syr.mp3" },
 ];
 
 const toolItems = [
@@ -556,72 +357,52 @@ function HighlightedTranscript({ text, words }: { text: string; words: Uncertain
   );
 }
 
-/** 4-step pipeline progress shown during submission */
-function PipelineProgress({ steps }: { steps: PipelineAnimStep[] }) {
+const THINKING_PHRASES = [
+  "Listening to Arabic dialect patterns…",
+  "Checking for uncertain clinical terms…",
+  "Generating SOAP note with Fanar…",
+  "Measuring token-level confidence…",
+  "Scoring note quality across 5 dimensions…",
+  "Synthesising uncertainty signals…",
+  "Identifying physician checkpoint questions…",
+  "Evaluating question quality…",
+  "Applying escalation rules…",
+  "Finalising clinical note…",
+];
+
+/** Animated thinking phrase stream shown while Pipeline B runs */
+function ThinkingStream() {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const [opacity, setOpacity] = useState(1);
+
+  useEffect(() => {
+    const cycle = () => {
+      setOpacity(0);
+      const fadeIn = setTimeout(() => {
+        setPhraseIndex((i) => (i + 1) % THINKING_PHRASES.length);
+        setOpacity(1);
+      }, 300);
+      return fadeIn;
+    };
+    const interval = setInterval(cycle, 2100);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
       <div className="mb-3 flex items-center gap-2">
         <Zap className="h-3.5 w-3.5 text-accent-500" />
         <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-          Fanar agentic pipeline
+          Fanar Pipeline B
         </p>
+        <LoaderCircle className="ml-auto h-3.5 w-3.5 animate-spin text-accent-400" />
       </div>
-      <div className="space-y-2">
-        {steps.map((step) => (
-          <div key={step.name} className="flex items-center gap-3">
-            <div className="w-4 flex-shrink-0">
-              {step.status === "done" ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-              ) : step.status === "running" ? (
-                <LoaderCircle className="h-4 w-4 animate-spin text-accent-500" />
-              ) : step.status === "failed" ? (
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-              ) : (
-                <div className="h-4 w-4 rounded-full border-2 border-zinc-300" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className={`text-sm ${
-                  step.status === "done" ? "text-zinc-700"
-                  : step.status === "running" ? "font-medium text-zinc-950"
-                  : "text-zinc-400"
-                }`}>{step.label}</span>
-                {step.status === "done" && (
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {step.fallback ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                        Groq fallback
-                      </span>
-                    ) : step.provider ? (
-                      <span className="rounded-full bg-accent-50 px-2 py-0.5 text-[10px] font-semibold text-accent-600">
-                        {step.provider}
-                      </span>
-                    ) : null}
-                    {step.duration_ms && (
-                      <span className="text-[10px] text-zinc-400">{(step.duration_ms / 1000).toFixed(1)}s</span>
-                    )}
-                  </div>
-                )}
-                {step.status === "running" && (
-                  <span className="text-xs text-accent-500 animate-pulse">processing…</span>
-                )}
-              </div>
-              {step.status !== "pending" && (
-                <div className="mt-1 h-1 overflow-hidden rounded-full bg-zinc-200">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${
-                      step.status === "done" ? "w-full bg-emerald-400"
-                      : step.status === "running" ? "pipeline-bar-running bg-accent-400"
-                      : "w-0"
-                    }`}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+      <p
+        className="text-sm text-zinc-600 transition-opacity duration-300"
+        style={{ opacity }}
+      >
+        {THINKING_PHRASES[phraseIndex]}
+      </p>
     </div>
   );
 }
@@ -647,6 +428,40 @@ function PipelineBadge({ pipeline }: { pipeline: ScribeResponse["pipeline"] }) {
       <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-500">
         {(totalMs / 1000).toFixed(1)}s total
       </span>
+    </div>
+  );
+}
+
+/** Logprob confidence badge shown next to SOAP header */
+function LogprobBadge({ data }: { data: LogprobData | undefined }) {
+  if (!data || data.normalised_score == null) return null;
+  const pct = Math.round(data.normalised_score * 100);
+  const [color, label] =
+    pct >= 80 ? ["bg-emerald-100 text-emerald-700", "High confidence"]
+    : pct >= 65 ? ["bg-amber-100 text-amber-700", "Moderate confidence"]
+    : ["bg-red-100 text-red-700", "Low confidence"];
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${color}`}>
+      {label} · {pct}%
+      {data.below_threshold && <AlertTriangle className="h-3 w-3 ml-0.5" />}
+    </span>
+  );
+}
+
+/** Mandatory review banner shown above SOAP note when review is required */
+function MandatoryReviewBanner({ mandatory, partial }: { mandatory?: boolean; partial?: boolean }) {
+  if (!mandatory && !partial) return null;
+  return (
+    <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
+      <div>
+        <p className="text-sm font-semibold text-red-700">Physician review required before finalising</p>
+        <p className="mt-0.5 text-xs text-red-600">
+          {mandatory
+            ? "Model confidence is below the safety threshold. Answer all physician questions before signing off."
+            : "Partial transcript analysis — large or mixed-dialect file. Verify uncertain terms manually."}
+        </p>
+      </div>
     </div>
   );
 }
@@ -730,7 +545,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const [lastRunId, setLastRunId] = useState<string | undefined>();
   const [promptAnswers, setPromptAnswers] = useState<Record<string, string>>({});
   const [promptInputs, setPromptInputs] = useState<Record<string, string>>({});
-  const [pipelineSteps, setPipelineSteps] = useState<PipelineAnimStep[]>([]);
   const [inputOpen, setInputOpen] = useState(true);
   const [outputOpen, setOutputOpen] = useState(true);
   const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
@@ -746,7 +560,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pipelineTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const physicianReviewRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -846,46 +659,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       .catch(() => setError("Could not load demo audio file."));
   }, [selectedDemo]);
 
-  function startPipelineAnimation() {
-    const initial = PIPELINE_STEP_DEFS.map((d) => ({ ...d, status: "pending" as const }));
-    setPipelineSteps(initial);
-    pipelineTimersRef.current.forEach(clearTimeout);
-    pipelineTimersRef.current = [];
-
-    const STEP_MS = 4500;
-    PIPELINE_STEP_DEFS.forEach((_, i) => {
-      const t = setTimeout(() => {
-        setPipelineSteps((prev) =>
-          prev.map((s, idx) =>
-            idx < i ? { ...s, status: "done" as const }
-            : idx === i ? { ...s, status: "running" as const }
-            : s
-          )
-        );
-      }, i * STEP_MS);
-      pipelineTimersRef.current.push(t);
-    });
-  }
-
-  function finishPipelineAnimation(response: ScribeResponse) {
-    pipelineTimersRef.current.forEach(clearTimeout);
-    const apiSteps = getArray((response.pipeline as Record<string, unknown> | undefined)?.steps) as Record<string, unknown>[];
-    setPipelineSteps(
-      PIPELINE_STEP_DEFS.map((def) => {
-        const apiStep = apiSteps.find((s) => asText(s.step) === def.name);
-        if (apiStep) {
-          return {
-            ...def,
-            status: asText(apiStep.status) === "failed" ? "failed" : "done",
-            provider: asText(apiStep.provider),
-            duration_ms: typeof apiStep.duration_ms === "number" ? apiStep.duration_ms : undefined,
-            fallback: Boolean(apiStep.fallback)
-          };
-        }
-        return { ...def, status: "done" };
-      })
-    );
-  }
 
   async function startRecording() {
     setError("");
@@ -959,50 +732,29 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
     setError("");
     setIsSubmitting(true);
     setStorageStatus("");
-    setPipelineSteps([]);
 
     const demoConfig = selectedDemo ? DEMO_CONFIGS.find((d) => d.key === selectedDemo) : null;
 
     if (demoConfig) {
-      // Demo mode: fake 20s pipeline (5s per step) then show canned result
-      const DEMO_STEP_MS = 5000;
-      const initial = PIPELINE_STEP_DEFS.map((d) => ({ ...d, status: "pending" as const }));
-      setPipelineSteps(initial);
-      pipelineTimersRef.current.forEach(clearTimeout);
-      pipelineTimersRef.current = [];
-
-      PIPELINE_STEP_DEFS.forEach((_, i) => {
-        const t = setTimeout(() => {
-          setPipelineSteps((prev) =>
-            prev.map((s, idx) =>
-              idx < i ? { ...s, status: "done" as const }
-              : idx === i ? { ...s, status: "running" as const }
-              : s
-            )
-          );
-        }, i * DEMO_STEP_MS);
-        pipelineTimersRef.current.push(t);
-      });
-
-      const finishTimer = setTimeout(() => {
-        const data = demoConfig.fakeResult;
-        setPipelineSteps(PIPELINE_STEP_DEFS.map((d) => ({ ...d, status: "done" as const,
-          provider: "Fanar", duration_ms: Math.floor(Math.random() * 2000) + 3000 })));
+      // Demo mode: call cached API endpoint (10s server delay simulates real processing)
+      try {
+        const data = await fetchDemo(demoConfig.key);
         setResult(data);
         setInputOpen(false);
         setOutputOpen(false);
         setPromptAnswers({});
         setPromptInputs({});
-        setStorageStatus("Demo mode — no data sent.");
+        setStorageStatus("Demo mode — cached Pipeline B result.");
         addChatMessage({ role: "assistant", content: "Note ready." });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Demo fetch failed");
+      } finally {
         setIsSubmitting(false);
-      }, PIPELINE_STEP_DEFS.length * DEMO_STEP_MS);
-      pipelineTimersRef.current.push(finishTimer);
+      }
       return;
     }
 
     // Real mode
-    startPipelineAnimation();
     const sourceMode: ScribeSourceMode = inputMode === "manual" ? "manual_transcript" : "audio";
     const consultationTime = new Date().toISOString();
 
@@ -1015,7 +767,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
       });
 
       setResult(data);
-      finishPipelineAnimation(data);
       setInputOpen(false);
       setOutputOpen(false);
       setPromptAnswers({});
@@ -1040,7 +791,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
           : "The note is generated. I can help clarify risks, evidence, and follow-up questions."
       });
     } catch (caught) {
-      setPipelineSteps((prev) => prev.map((s) => s.status === "running" ? { ...s, status: "failed" } : s));
       setError(caught instanceof Error ? caught.message : "Unable to process this consultation.");
     } finally {
       setIsSubmitting(false);
@@ -1167,7 +917,6 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                       onChange={(e) => {
                         setSelectedDemo(e.target.value);
                         setResult(null);
-                        setPipelineSteps([]);
                         setStorageStatus("");
                         setError("");
                         setPromptAnswers({});
@@ -1245,11 +994,10 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
               </div>
 
               {/* Pipeline progress (shown during + after processing) */}
-              {pipelineSteps.length > 0 && (
-                isSubmitting
-                  ? <PipelineProgress steps={pipelineSteps} />
-                  : result?.pipeline && <PipelineBadge pipeline={result.pipeline} />
-              )}
+              {isSubmitting
+                ? <ThinkingStream />
+                : result?.pipeline && <PipelineBadge pipeline={result.pipeline} />
+              }
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0 text-sm text-zinc-500">
@@ -1315,7 +1063,10 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
             {/* Note (editable) */}
             <section className="border-b border-zinc-100 py-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold uppercase text-zinc-950">Note</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold uppercase text-zinc-950">Note</h3>
+                  <LogprobBadge data={result?.logprob_data} />
+                </div>
                 {result && soapSections.length > 0 && (
                   <div className="flex items-center gap-1.5">
                     <button
@@ -1349,6 +1100,12 @@ export function SajilWorkspace({ encounterId }: { encounterId: string }) {
                   </div>
                 )}
               </div>
+              {result && (
+                <MandatoryReviewBanner
+                  mandatory={result.mandatory_review}
+                  partial={result.partial_check && !result.mandatory_review}
+                />
+              )}
               {soapSections.length > 0 ? (
                 <div className="divide-y divide-zinc-100 border-y border-zinc-200">
                   {soapSections.map((section) => (

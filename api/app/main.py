@@ -7,6 +7,7 @@ from app.routers.intake import router as intake_router
 from app.routers.notes import router as notes_router
 from app.routers.copilot import router as copilot_router
 from app.routers.stats import router as stats_router
+from app.routers.demo import router as demo_router
 
 app = FastAPI(
     title="FanarScribe API",
@@ -28,6 +29,7 @@ app.include_router(intake_router, prefix="/api/v1/patient-intake", tags=["intake
 app.include_router(notes_router, prefix="/api/v1/notes", tags=["notes"])
 app.include_router(copilot_router, prefix="/api/v1/copilot", tags=["copilot"])
 app.include_router(stats_router, prefix="/api/v1/stats", tags=["stats"])
+app.include_router(demo_router, prefix="/api/v1/demo", tags=["demo"])
 
 
 @app.get("/")
