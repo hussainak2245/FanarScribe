@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Feather } from "lucide-react";
 import { UncertaintyDemo } from "@/features/landing/UncertaintyDemo";
 import { routes } from "@/lib/constants/routes";
 
@@ -7,8 +8,11 @@ export default function HomePage() {
     <div className="bg-white text-zinc-950">
       <header className="border-b border-zinc-100 bg-white">
         <div className="mx-auto flex h-12 w-full max-w-5xl items-center px-4 sm:px-6">
-          <Link className="sajil-wordmark text-base text-zinc-950" href="/">
-            SAJIL
+          <Link className="flex items-center gap-2 text-zinc-950" href="/" aria-label="Sajil home">
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent-500 text-white">
+              <Feather className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <span className="sajil-wordmark text-base">SAJIL</span>
           </Link>
         </div>
       </header>
