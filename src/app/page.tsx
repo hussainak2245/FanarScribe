@@ -1,22 +1,32 @@
 import Link from "next/link";
+import { Feather } from "lucide-react";
 import { UncertaintyDemo } from "@/features/landing/UncertaintyDemo";
-import { QuillHero } from "@/features/landing/QuillHero";
 import { routes } from "@/lib/constants/routes";
 
 export default function HomePage() {
   return (
     <div className="bg-white text-zinc-950">
-
+      <header className="border-b border-zinc-100 bg-white">
+        <div className="mx-auto flex h-12 w-full max-w-5xl items-center px-4 sm:px-6">
+          <Link className="flex items-center gap-2 text-zinc-950" href="/" aria-label="Sajil home">
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent-500 text-white">
+              <Feather className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <span className="sajil-wordmark text-base">SAJIL</span>
+          </Link>
+        </div>
+      </header>
 
       <main>
 
         {/* HERO */}
         <section className="px-4 pb-16 pt-8 sm:px-6 sm:pt-14 sm:pb-20">
           <div className="mx-auto max-w-5xl">
-            <div className="flex flex-col items-center gap-10 sm:flex-row sm:items-center sm:justify-between sm:gap-12">
+            <div className="flex flex-col items-center sm:flex-row sm:items-center sm:justify-between sm:gap-12">
 
-              {/* Left column — text (unchanged) */}
+              {/* Left column — text */}
               <div className="flex-1">
+
                 <h1 className="sajil-wordmark text-[72px] leading-none text-zinc-950 sm:text-[108px]">
                   SAJIL
                 </h1>
@@ -36,10 +46,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Right column — animated quill */}
-              <div className="flex flex-shrink-0 justify-center">
-                <QuillHero />
-              </div>
 
             </div>
           </div>
