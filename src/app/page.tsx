@@ -1,22 +1,28 @@
 import Link from "next/link";
 import { UncertaintyDemo } from "@/features/landing/UncertaintyDemo";
-import { QuillHero } from "@/features/landing/QuillHero";
 import { routes } from "@/lib/constants/routes";
 
 export default function HomePage() {
   return (
     <div className="bg-white text-zinc-950">
-
+      <header className="border-b border-zinc-100 bg-white">
+        <div className="mx-auto flex h-12 w-full max-w-5xl items-center px-4 sm:px-6">
+          <Link className="sajil-wordmark text-base text-zinc-950" href="/">
+            SAJIL
+          </Link>
+        </div>
+      </header>
 
       <main>
 
         {/* HERO */}
         <section className="px-4 pb-16 pt-8 sm:px-6 sm:pt-14 sm:pb-20">
           <div className="mx-auto max-w-5xl">
-            <div className="flex flex-col items-center gap-10 sm:flex-row sm:items-center sm:justify-between sm:gap-12">
+            <div className="flex flex-col items-center sm:flex-row sm:items-center sm:justify-between sm:gap-12">
 
-              {/* Left column — text (unchanged) */}
+              {/* Left column — text */}
               <div className="flex-1">
+
                 <h1 className="sajil-wordmark text-[72px] leading-none text-zinc-950 sm:text-[108px]">
                   SAJIL
                 </h1>
@@ -36,10 +42,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Right column — animated quill */}
-              <div className="flex flex-shrink-0 justify-center">
-                <QuillHero />
-              </div>
 
             </div>
           </div>
